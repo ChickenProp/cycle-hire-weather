@@ -2,6 +2,10 @@
 title: "London Cycle Hires and Weather"
 output: html_document
 ---
+Libraries:
+```{r}
+library(ggplot2)
+```
 I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
 I'm tying together two datasets: one that I collected myself, of historical cycle hire availability; and one of weather. I'm doing an analysis from July 2013 to June 2014.
@@ -10,8 +14,9 @@ The cycle hire dataset has a granularity of ten minutes. That's ~50000 observati
 
 The weather dataset has a granularity of one day. The weather data is taken from [Weather Underground](http://www.wunderground.com/history/airport/EGLC/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London City Airport.
 
+First we put the weather data in a nice format:
+
 ```{r}
-# First we put the weather data in a nice format.
 weather <- read.csv('weather.csv')
 names(weather) <- c('date', 't.max', 't', 't.min', 'dew.max', 'dew', 'dew.min',
                     'hum.max', 'hum', 'hum.min', 'pres.max', 'pres', 
@@ -23,4 +28,41 @@ weather$date <- as.Date(weather$date)
 # The events are Fog, Rain, Snow, Hail and Thunderstorm. Other than rain, they
 # all have fewer than 20 days, which isn't really enough to look at.
 weather$rain <- grepl('Rain', weather$events)
+```
+
+Now we handle the bike data. I did some cleaning up in shell beforehand, so I know that the data is sorted, timestamps are unique, and so on. It comes in four files, one per docking station.
+
+```{r}
+bikes.sp <- read.csv('bikes-sp.csv')
+
+# Remove columns we won't be looking at. id/lat/long are constant within each
+# file. The others are constant over the whole dataset.
+bikes.sp$id <- NULL
+bikes.sp$lat <- NULL
+bikes.sp$long <- NULL
+bikes.sp$installed <- NULL
+bikes.sp$locked <- NULL
+bikes.sp$temporary <- NULL
+
+names(bikes.sp) <- c('updated', 'name', 'num.bikes', 'num.spaces')
+
+bikes.sp$updated <- as.POSIXct(strptime(bikes.sp$updated, 
+                                        "%Y-%m-%dT%H:%M:%S%z"))
+bikes.sp$num.docks <- with(bikes.sp, num.bikes+num.spaces)
+
+# Add columns for prev and diff between updates. I feel like there should be
+# a better way to do this, but I haven't found it. (Time series don't seem to
+# work very well.) Only add ones I actually use.
+bikes.sp$prev.updated <- c(as.POSIXct(NA), head(bikes.sp$updated, -1))
+bikes.sp$prev.num.bikes <- c(NA, head(bikes.sp$num.bikes, -1))
+bikes.sp$prev.num.docks <- c(NA, head(bikes.sp$num.docks, -1))
+
+bikes.sp$d.updated <- with(bikes.sp, as.numeric(updated - prev.updated))
+bikes.sp$d.num.bikes <- with(bikes.sp, num.bikes - prev.num.bikes)
+```
+
+Graph of the length of time spent with a given number of active docks:
+```{r}
+ggplot(bikes.sp, aes(x=prev.num.docks, y=d.updated/60/24)) +
+  geom_histogram(stat='identity')
 ```
