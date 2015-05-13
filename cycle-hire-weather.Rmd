@@ -5,6 +5,7 @@ output: html_document
 Libraries:
 ```{r}
 library(ggplot2)
+library(reshape2)
 ```
 I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
@@ -12,7 +13,9 @@ I'm tying together two datasets: one that I collected myself, of historical cycl
 
 The cycle hire dataset has a granularity of ten minutes. That's ~50000 observations per docking station for the year, so I'm choosing to focus on four docking stations only (the ones near my office that I most often use when commuting).
 
-The weather dataset has a granularity of one day. The weather data is taken from [Weather Underground](http://www.wunderground.com/history/airport/EGLC/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London City Airport.
+The weather dataset has a granularity of one day. The weather data is taken from [Weather Underground](http://www.wunderground.com/history/airport/EGLL/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London Heathrow Airport.
+
+(London City Airport is closer to the bike stations that I use, but the data from that airport reports 0 precipitation on every single day. The data from Heathrow seems to be more complete, and I expect it to be almost as relevant.)
 
 First we put the weather data in a nice format:
 
@@ -25,44 +28,77 @@ names(weather) <- c('date', 't.max', 't', 't.min', 'dew.max', 'dew', 'dew.min',
 
 weather$date <- as.Date(weather$date)
 
-# The events are Fog, Rain, Snow, Hail and Thunderstorm. Other than rain, they
-# all have fewer than 20 days, which isn't really enough to look at.
+# The events are Fog, Rain, Snow, and Thunderstorm. Only rain and fog have 
+# enough days to be worth looking at (even fog is marginal, at 36).
 weather$rain <- grepl('Rain', weather$events)
+weather$fog <- grepl('Fog', weather$events)
+```
+
+What does the weather look like?
+```{r}
+ggplot(melt(weather, id.vars='date', measure.vars=c('t','t.min','t.max')),
+       aes(x=variable, y=value)) + 
+  geom_boxplot()
+ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
 ```
 
 Now we handle the bike data. I did some cleaning up in shell beforehand, so I know that the data is sorted, timestamps are unique, and so on. It comes in four files, one per docking station.
 
 ```{r}
-bikes.sp <- read.csv('bikes-sp.csv')
+read.bikes <- function (fname) {
+  bikes <- read.csv(fname)
 
-# Remove columns we won't be looking at. id/lat/long are constant within each
-# file. The others are constant over the whole dataset.
-bikes.sp$id <- NULL
-bikes.sp$lat <- NULL
-bikes.sp$long <- NULL
-bikes.sp$installed <- NULL
-bikes.sp$locked <- NULL
-bikes.sp$temporary <- NULL
+  # Remove columns we won't be looking at. id/lat/long are constant within each
+  # file. The others are constant over the whole dataset.
+  bikes$id <- NULL
+  bikes$lat <- NULL
+  bikes$long <- NULL
+  bikes$installed <- NULL
+  bikes$locked <- NULL
+  bikes$temporary <- NULL
 
-names(bikes.sp) <- c('updated', 'name', 'num.bikes', 'num.spaces')
+  names(bikes) <- c('updated', 'name', 'num.bikes', 'num.spaces')
 
-bikes.sp$updated <- as.POSIXct(strptime(bikes.sp$updated, 
-                                        "%Y-%m-%dT%H:%M:%S%z"))
-bikes.sp$num.docks <- with(bikes.sp, num.bikes+num.spaces)
+  bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z"))
+  bikes$num.docks <- with(bikes, num.bikes+num.spaces)
 
-# Add columns for prev and diff between updates. I feel like there should be
-# a better way to do this, but I haven't found it. (Time series don't seem to
-# work very well.) Only add ones I actually use.
-bikes.sp$prev.updated <- c(as.POSIXct(NA), head(bikes.sp$updated, -1))
-bikes.sp$prev.num.bikes <- c(NA, head(bikes.sp$num.bikes, -1))
-bikes.sp$prev.num.docks <- c(NA, head(bikes.sp$num.docks, -1))
+  # Add columns for prev and diff between updates. I feel like there should be
+  # a better way to do this, but I haven't found it. (Time series don't seem to
+  # work very well.) Only add ones I actually use.
+  bikes$prev.updated <- c(as.POSIXct(NA), head(bikes$updated, -1))
+  bikes$prev.num.bikes <- c(NA, head(bikes$num.bikes, -1))
+  bikes$prev.num.docks <- c(NA, head(bikes$num.docks, -1))
 
-bikes.sp$d.updated <- with(bikes.sp, as.numeric(updated - prev.updated))
-bikes.sp$d.num.bikes <- with(bikes.sp, num.bikes - prev.num.bikes)
+  bikes$d.updated <- with(bikes, as.numeric(updated - prev.updated))
+  bikes$d.num.bikes <- with(bikes, num.bikes - prev.num.bikes)
+  
+  return(bikes)
+}
+
+bikes <- rbind(read.bikes('bikes-sp.csv'),
+               read.bikes('bikes-hh.csv'),
+               read.bikes('bikes-bp.csv'),
+               read.bikes('bikes-es.csv'))
+```
+
+Now tie bikes and weather together:
+```{r}
+bikes$updated.date <- as.Date(bikes$updated)
+bikes <- merge(x=bikes, y=weather, by.x='updated.date', by.y='date')
 ```
 
 Graph of the length of time spent with a given number of active docks:
-```{r}
-ggplot(bikes.sp, aes(x=prev.num.docks, y=d.updated/60/24)) +
-  geom_histogram(stat='identity')
+```{r, warning=F}
+ggplot(bikes, aes(x=prev.num.docks, y=d.updated/60/24)) +
+  geom_histogram(stat='identity') +
+  facet_wrap(~name)
+```
+
+We see that every station was reporting less than a full complement of docks more than half the time; but only Southampton Place was completely out of service for any significant period.
+
+What does the correlation look like between #bikes at each tick?
+
+```{r, warning=F}
+ggplot(bikes, aes(x=num.bikes, y=prev.num.bikes, color=name)) + 
+  geom_jitter(alpha=0.05) #alpha=0.05
 ```
