@@ -7,6 +7,7 @@ Libraries:
 library(ggplot2)
 library(reshape2)
 library(dplyr)
+library(lubridate)
 ```
 I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
@@ -56,6 +57,8 @@ read.bikes <- function (fname) {
 
   bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z"))
   bikes$num.docks <- with(bikes, num.bikes+num.spaces)
+  
+  bikes$weekday <- wday(bikes$updated, label=T)
 
   # Add columns for prev and diff between updates. I feel like there should be
   # a better way to do this, but I haven't found it. (Time series don't seem to
@@ -96,7 +99,11 @@ What does the correlation look like between #bikes at each tick?
 ```{r, warning=F}
 ggplot(bikes, aes(x=num.bikes, y=prev.num.bikes, color=name)) + 
   geom_jitter(alpha=0.05)
+
+cor.test(bikes$num.bikes, bikes$prev.num.bikes)
 ```
+
+This is very strong correlation, with the most common outcome being that the number of bikes hasn't changed.
 
 Are more journeys taken on non-rainy days?
 
@@ -116,3 +123,22 @@ summary(abs(bikes$d.num.bikes[!bikes$rain]))
 ```
 
 The mean is almost 25% higher on clear days than rainy days.
+
+What about journeys on different weekdays?
+
+```{r, warning=F}
+ggplot(bikes, aes(x=weekday, y=abs(d.num.bikes))) + geom_bar(stat='identity')
+ggplot(bikes, aes(x=weekday, y=num.bikes)) + geom_boxplot()
+```
+
+Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week, but the distribution does. Looking closer at that:
+
+```{r, warning=F}
+ggplot(bikes, aes(x=num.bikes/num.docks)) + 
+  geom_density() + 
+  facet_wrap(~weekday)
+```
+
+Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work). Since the stations have different numbers of docks, I did a graph of fullness rather than of number of bikes.
+
+(The density plot doesn't show peaks exactly at 0 and 1 because of how the window works, but histograms of num.bikes and num.spaces show that that's where they are. It would be difficult to use a histogram for this graph because there's no sensbile binwidth.)
