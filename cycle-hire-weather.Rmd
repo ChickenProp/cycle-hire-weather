@@ -35,9 +35,13 @@ read.bikes <- function (fname) {
   bikes$locked <- NULL
   bikes$temporary <- NULL
 
+  # Rename and restructure
   names(bikes) <- c('updated', 'name', 'num.bikes', 'num.spaces')
-
   bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z"))
+  
+  # Add columns derived from existing ones. `time` is an integer for 
+  # simplicity. I'm not doing any actual temporal manipulations with it.
+  bikes$updated.time <- with(bikes, 100 * hour(updated) + minute(updated))
   bikes$updated.date <- as.Date(bikes$updated)
   bikes$num.docks <- with(bikes, num.bikes+num.spaces)
   bikes$weekday <- wday(bikes$updated, label=T)
@@ -46,6 +50,9 @@ read.bikes <- function (fname) {
   # a better way to do this, but I haven't found it. (Time series don't seem to
   # work very well.) Only add ones I actually use.
   bikes$prev.updated <- c(as.POSIXct(NA), head(bikes$updated, -1))
+  bikes$prev.updated.time <- 
+    with(bikes, 100 * hour(prev.updated) + minute(prev.updated))
+  bikes$prev.updated.date <- as.Date(bikes$prev.updated)
   bikes$prev.num.bikes <- c(NA, head(bikes$num.bikes, -1))
   bikes$prev.num.docks <- c(NA, head(bikes$num.docks, -1))
 
@@ -145,3 +152,49 @@ ggplot(bikes, aes(x=num.bikes/num.docks)) +
 Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work). Since the stations have different numbers of docks, I did a graph of fullness rather than of number of bikes.
 
 (The density plot doesn't show peaks exactly at 0 and 1 because of how the window works, but histograms of num.bikes and num.spaces show that that's where they are. It would be difficult to use a histogram for this graph because there's no sensbile binwidth.)
+
+I also want to look at the number of bikes available at specific times. Since I only have snapshots, I'm going to take the first observation after that time on any given day. Here's a function that lets me do that:
+
+```{r}
+at.time <- function(time) {
+  # prev.updated.time < time <= updated.time is the obvious test. But it fails
+  # around day boundaries, so we also check whether the date changed.
+  # Additionally, ignore results where d.updated.time is too big, because those
+  # may not be accurate.
+  with(bikes, (prev.updated.time < time | prev.updated.date < updated.date) &
+              time <= updated.time &
+              d.updated <= 20)
+}
+```
+
+So, number of slots available at 0930, when I'm trying to arrive at work:
+
+```{r}
+ggplot(bikes[at.time(0930),], aes(x=num.spaces)) + 
+  geom_histogram(binwidth=1) +
+  facet_wrap(~name)
+```
+
+What's that in terms of frequency?
+
+```{r}
+ggplot(bikes[at.time(0930),] %>% 
+         group_by(name) %>% 
+         mutate(count=1/length(name)),
+       aes(x=num.spaces, y=count)) +
+  geom_bar(stat='identity',binwidth=1) +
+  facet_wrap(~name)
+```
+
+And now at 0940, in case I'm running late:
+
+```{r}
+ggplot(bikes[at.time(0940),] %>% 
+         group_by(name) %>% 
+         mutate(count=1/length(name)),
+       aes(x=num.spaces, y=count)) +
+  geom_bar(stat='identity',binwidth=1) +
+  facet_wrap(~name)
+```
+
+The 0s are all a little higher, but there's not much in it.
