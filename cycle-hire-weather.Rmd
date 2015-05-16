@@ -6,6 +6,7 @@ Libraries:
 ```{r}
 library(ggplot2)
 library(reshape2)
+library(dplyr)
 ```
 I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
@@ -36,11 +37,13 @@ weather$fog <- grepl('Fog', weather$events)
 
 What does the weather look like?
 ```{r}
-ggplot(melt(weather, id.vars='date', measure.vars=c('t','t.min','t.max')),
+ggplot(melt(weather, id.vars='date', measure.vars=c('t.min','t','t.max')),
        aes(x=variable, y=value)) + 
   geom_boxplot()
 ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
 ```
+
+If `rain` is false, `precip.mm` is almost always 0, but occasionally not. And if `rain` is true, `precip.mm` is still often 0.
 
 Now we handle the bike data. I did some cleaning up in shell beforehand, so I know that the data is sorted, timestamps are unique, and so on. It comes in four files, one per docking station.
 
@@ -100,5 +103,24 @@ What does the correlation look like between #bikes at each tick?
 
 ```{r, warning=F}
 ggplot(bikes, aes(x=num.bikes, y=prev.num.bikes, color=name)) + 
-  geom_jitter(alpha=0.05) #alpha=0.05
+  geom_jitter(alpha=0.05)
 ```
+
+Are more journeys taken on non-rainy days?
+
+```{r, warning=F}
+ggplot(group_by(bikes, rain) %>% mutate(count=1/length(rain)),
+       aes(x=d.num.bikes, y=count)) + 
+  geom_bar(stat='identity') +
+  scale_x_discrete() +
+  facet_wrap(~rain)
+```
+
+Looks like it. Slightly over 70% of observations have no bikes added or removed on rainy days, slightly under 70% on clear days. Confirming this numerically (taking the absolute value):
+
+```{r}
+summary(abs(bikes$d.num.bikes[bikes$rain]))
+summary(abs(bikes$d.num.bikes[!bikes$rain]))
+```
+
+The mean is almost 25% higher on clear days than rainy days.
