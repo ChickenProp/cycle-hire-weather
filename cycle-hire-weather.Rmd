@@ -10,14 +10,6 @@ library(dplyr)
 ```
 I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
-I'm tying together two datasets: one that I collected myself, of historical cycle hire availability; and one of weather. I'm doing an analysis from July 2013 to June 2014.
-
-The cycle hire dataset has a granularity of ten minutes. That's ~50000 observations per docking station for the year, so I'm choosing to focus on four docking stations only (the ones near my office that I most often use when commuting).
-
-The weather dataset has a granularity of one day. The weather data is taken from [Weather Underground](http://www.wunderground.com/history/airport/EGLL/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London Heathrow Airport.
-
-(London City Airport is closer to the bike stations that I use, but the data from that airport reports 0 precipitation on every single day. The data from Heathrow seems to be more complete, and I expect it to be almost as relevant.)
-
 First we put the weather data in a nice format:
 
 ```{r}
