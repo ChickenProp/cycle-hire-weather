@@ -16,7 +16,8 @@ stations I wanted, and removed any duplicates. Duplicates could happen when the
 API failed to update; and observations could be missing where the API went down
 or my script failed to run for whatever reason.
 
-(As I write this, the data returned by the API hasn't been updated since April, so there's a possibility that it's going to go down completely.)
+(As I write this, the data returned by the API hasn't been updated since April,
+so there's a possibility that it's going to go down completely.)
 
 There are four data files, one per station. They have these fields:
 
@@ -36,9 +37,14 @@ I only used the ones marked with asterisks.
 
 ---
 
-The weather dataset has a granularity of one day. The weather data is taken from [Weather Underground](http://www.wunderground.com/history/airport/EGLL/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London Heathrow Airport.
+The weather dataset has a granularity of one day. The weather data is taken from
+Weather Underground, using the weather station at Lonon Heathrow Airport.
 
-(London City Airport is closer to the bike stations that I use, but the data from that airport reports 0 precipitation on every single day. The data from Heathrow seems to be more complete, and I expect it to be almost as relevant.)
+http://www.wunderground.com/history/airport/EGLL/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=
+
+(London City Airport is closer to the bike stations that I use, but the data
+from that airport reports 0 precipitation on every single day. The data from
+Heathrow seems to be more complete, and I expect it to be almost as relevant.)
 
 Fields:
 
@@ -56,3 +62,9 @@ Fields:
   use them.
 - Events: Text field containing some combination of Rain, Fog, Thunderstorm,
   Snow.
+
+---
+
+After dropping fields that I don't use, renaming the rest, and adding some, I end up with:
+
+(fill this in later)

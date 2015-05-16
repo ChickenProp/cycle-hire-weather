@@ -2,18 +2,14 @@
 title: "London Cycle Hires and Weather"
 output: html_document
 ---
-Libraries:
-```{r}
+```{r, echo=F, warning=F, message=F}
 library(ggplot2)
 library(reshape2)
 library(dplyr)
 library(lubridate)
 ```
-I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
 
-First we put the weather data in a nice format:
-
-```{r}
+```{r, echo=F}
 weather <- read.csv('weather.csv')
 names(weather) <- c('date', 't.max', 't', 't.min', 'dew.max', 'dew', 'dew.min',
                     'hum.max', 'hum', 'hum.min', 'pres.max', 'pres', 
@@ -26,21 +22,7 @@ weather$date <- as.Date(weather$date)
 # enough days to be worth looking at (even fog is marginal, at 36).
 weather$rain <- grepl('Rain', weather$events)
 weather$fog <- grepl('Fog', weather$events)
-```
 
-What does the weather look like?
-```{r}
-ggplot(melt(weather, id.vars='date', measure.vars=c('t.min','t','t.max')),
-       aes(x=variable, y=value)) + 
-  geom_boxplot()
-ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
-```
-
-If `rain` is false, `precip.mm` is almost always 0, but occasionally not. And if `rain` is true, `precip.mm` is still often 0.
-
-Now we handle the bike data. I did some cleaning up in shell beforehand, so I know that the data is sorted, timestamps are unique, and so on. It comes in four files, one per docking station.
-
-```{r}
 read.bikes <- function (fname) {
   bikes <- read.csv(fname)
 
@@ -56,8 +38,8 @@ read.bikes <- function (fname) {
   names(bikes) <- c('updated', 'name', 'num.bikes', 'num.spaces')
 
   bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z"))
+  bikes$updated.date <- as.Date(bikes$updated)
   bikes$num.docks <- with(bikes, num.bikes+num.spaces)
-  
   bikes$weekday <- wday(bikes$updated, label=T)
 
   # Add columns for prev and diff between updates. I feel like there should be
@@ -77,13 +59,21 @@ bikes <- rbind(read.bikes('bikes-sp.csv'),
                read.bikes('bikes-hh.csv'),
                read.bikes('bikes-bp.csv'),
                read.bikes('bikes-es.csv'))
-```
 
-Now tie bikes and weather together:
-```{r}
-bikes$updated.date <- as.Date(bikes$updated)
 bikes <- merge(x=bikes, y=weather, by.x='updated.date', by.y='date')
 ```
+
+I'm interested in investigating the usage of London's cycle hire scheme, and in particular how it's affected by the weather.
+
+What does the weather look like?
+```{r}
+ggplot(melt(weather, id.vars='date', measure.vars=c('t.min','t','t.max')),
+       aes(x=variable, y=value)) + 
+  geom_boxplot()
+ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
+```
+
+If `rain` is false, `precip.mm` is almost always 0, but occasionally not. And if `rain` is true, `precip.mm` is still often 0.
 
 Graph of the length of time spent with a given number of active docks:
 ```{r, warning=F}
@@ -122,7 +112,20 @@ summary(abs(bikes$d.num.bikes[bikes$rain]))
 summary(abs(bikes$d.num.bikes[!bikes$rain]))
 ```
 
-The mean is almost 25% higher on clear days than rainy days.
+The mean is almost 25% higher on clear days than rainy days. What about fog?
+
+```{r, warning=F}
+ggplot(group_by(bikes, fog) %>% mutate(count=1/length(fog)),
+       aes(x=d.num.bikes, y=count)) + 
+  geom_bar(stat='identity') +
+  scale_x_discrete() +
+  facet_wrap(~fog)
+
+summary(abs(bikes$d.num.bikes[bikes$fog]))
+summary(abs(bikes$d.num.bikes[!bikes$fog]))
+```
+
+Fog makes approximately no difference.
 
 What about journeys on different weekdays?
 
