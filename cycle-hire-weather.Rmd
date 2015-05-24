@@ -7,6 +7,7 @@ library(ggplot2)
 library(reshape2)
 library(dplyr)
 library(lubridate)
+library(GGally)
 ```
 
 ```{r, echo=FALSE}
@@ -31,8 +32,12 @@ weather$fog <- grepl('Fog', weather$events)
 
 # I'm going to need times with no dates attached. The way to do that seems to
 # be to have datetimes with a constant date.
+#   This can parse numbers (seconds into the day), or strings in the form 
+# 'HHMM', or POSIXcts.
 as.time <- function (ct) {
-  return(as.POSIXct(as.numeric(ct) %% 86400, origin = "2000-01-01"))
+  if (is.character(ct))
+    return(as.time(as.POSIXct(ct, format='%H%M', tz='GMT')))
+  return(as.POSIXct(as.numeric(ct) %% 86400, origin = "1970-01-01", tz='GMT'))
 }
 
 # It's easier to wrangle the bike files separately and then put them together
@@ -53,7 +58,8 @@ read.bikes <- function (fname) {
 
   # Rename and restructure
   names(bikes) <- c('updated', 'name', 'num.bikes', 'num.spaces')
-  bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z"))
+  bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z", 
+                                       tz='GMT'))
   
   # Add columns derived from existing ones.
   bikes$updated.time <- as.time(bikes$updated)
@@ -66,6 +72,7 @@ read.bikes <- function (fname) {
   # a better way to do this, but I haven't found it. (Time series don't seem to
   # work very well.) Only add ones I actually use.
   bikes$prev.updated <- c(as.POSIXct(NA), head(bikes$updated, -1))
+  attributes(bikes$prev.updated)$tzone <- 'GMT'
   bikes$prev.updated.time <- as.time(bikes$prev.updated)
   bikes$prev.updated.date <- as.Date(bikes$prev.updated)
   bikes$prev.num.bikes <- c(NA, head(bikes$num.bikes, -1))
@@ -91,14 +98,13 @@ bikes <- subset(bikes.all, d.updated <= 15)
 # I also want to look at the number of bikes available at specific times. Since 
 # I only have snapshots, I'm going to take the first observation after that 
 # time on any given day. Here's a function that lets me do that. It takes a 
-# time in format '0930', and return a boolean vector to select the appropriate 
-# entries from bikes.
+# time in formats accepted by as.time, and returns a boolean vector to select 
+# the appropriate entries from bikes.
 at.time <- function(time) {
-  # prev.updated.time < time <= updated.time is the obvious test. But it fails
-  # around day boundaries, so we also check whether the date changed.
-  time <- as.time(as.POSIXct(time, format='%H%M'))
-  with(bikes, (prev.updated.time < time | prev.updated.date < updated.date) &
-              time <= updated.time)
+  time <- as.time(time)
+  with(bikes, ifelse(prev.updated.date == updated.date, 
+                     prev.updated.time < time & time <= updated.time,
+                     prev.updated.time < time | time <= updated.time))
 }
 ```
 
@@ -295,7 +301,7 @@ If I'm late, I have slightly less chance of finding a docking station, but not m
 
 # Multivariate plots 
 
-Correlation between #bikes at each tick:
+Correlation between #bikes between ticks:
 
 ```{r, warning=FALSE}
 ggplot(bikes, aes(x=num.bikes, y=prev.num.bikes, color=name)) + 
@@ -320,6 +326,7 @@ ggplot(bikes, aes(x=updated.time, y=num.bikes, color=rain)) +
   stat_smooth()
 ```
 
+
 # Multivariate analysis
 
 There's very strong correlation between the number of bikes at each axis. This is as expected, especially given what we saw about `d.num.bikes` previously. The colors don't show any particular station-dependent trends.
@@ -327,3 +334,127 @@ There's very strong correlation between the number of bikes at each axis. This i
 The correlation also looks strong between the number of bikes at each station at any given time. Since they're all close to each other, that's not surprising either. The time is also a big factor, with large numbers of bikes in the stations during office hours, and few numbers in the evening and early morning.
 
 Rain reduces the variance, with fewer bikes during office hours and more outside of them.
+
+# Reformatting 
+
+With the data in the current format, not all the questions we want to ask are easy. For example: how does the number of bikes at one station correlate with another at any given time?
+
+To answer questions like that, we need to be somewhat forgiving with our definition of 'any given time'. Updates don't necessarily happen simultaneously, so we need to bin them together.
+
+I'm going to create bins ten minutes wide, and assign every observation to a bin. Then in each bin, we can ask how many bikes were at each station.
+
+```{r}
+# Round updated.time to the nearest ten minutes
+tmp <- as.numeric(bikes$updated.time) + 300
+bikes$updated.time.bin <- as.time(tmp - tmp%%600)
+rm(tmp)
+
+# This gives a slightly different result: the latest :?5:00 time between
+# updated.time and prev.updated.time, or NA if there isn't one. (Day boundary
+# caveat: If the updates were e.g. at 23:50:00 and  00:10:00, then the bin will
+# be 23:55 rather than 00:05.)
+#   I'm not sure which version is more appropriate, but there's not much in it,
+# so I'm using the other one.
+
+# for (time in seq(300, 60*60*24, 600)) {
+#   bikes$updated.time.bin <- 
+#     ifelse(at.time(as.time(time)), time, bikes$updated.time.bin)
+# }
+# bikes$updated.time.bin <- as.time(bikes$updated.time.bin)
+
+# Create wide-format data.
+bikes.wide <- dcast(bikes, updated.date + updated.time.bin ~ name,
+                    value.var='num.bikes', fun.aggregate=mean)
+names(bikes.wide) <- c('date', 'time', 'sp', 'hh', 'bp', 'es')
+bikes.wide$total <- with(bikes.wide, sp+hh+bp+es)
+```
+
+Using this, we can check correlation between each station:
+
+```{r, echo=FALSE, warning=FALSE}
+ggpairs(bikes.wide, columns=3:6,
+        lower=list(params=c(alpha=0.05, position='jitter')))
+```
+
+Correlations range between 0.7 and 0.757, and the scatter plots all look pretty similar. This surprised me somewhat, but I usually only use the stations at specific times. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
+
+```{r, warning=FALSE}
+ggpairs(bikes.wide[bikes.wide$time == as.time('0930'),], columns=3:6,
+        lower=list(params=c(alpha=0.05, position='jitter')))
+
+ggpairs(bikes.wide[bikes.wide$time == as.time('1800'),], columns=3:6,
+        lower=list(params=c(alpha=0.05, position='jitter')))
+
+ggpairs(bikes.wide[bikes.wide$time == as.time('0000'),], columns=3:6,
+        lower=list(params=c(alpha=0.05, position='jitter')))
+
+ggpairs(bikes.wide[bikes.wide$time == as.time('1200'),], columns=3:6,
+        lower=list(params=c(alpha=0.05, position='jitter')))
+
+```
+
+The correlations are almost all even lower. That surprised me, but I think it's an example of [Simpson's paradox](http://en.wikipedia.org/wiki/Simpson%27s_paradox). I note that the darkest points in the graph are at midnight, with no bikes in any station much of the time. Bikes are periodically moved in vans to account for anticipated demand; I assume that these stations are emptied most nights to prepare for people coming to work in the morning.
+
+We can also check correlation between times more distant than a single tick. If I check the slots available when I leave the house, can I learn how many will be there when I arrive?
+
+```{r, warning=FALSE}
+spaces.0900.0930 <- 
+  dcast(bikes[bikes$updated.time.bin %in% as.time(c('0900', '0930')),], 
+        updated.date + name + rain ~ 
+          strftime(updated.time.bin, 'at.%H%M', tz='GMT'),
+        value.var='num.spaces', fun.aggregate=mean)
+
+ggplot(spaces.0900.0930, aes(x=at.0900, y=at.0930, color=name)) +
+  geom_jitter(alpha=0.2) +
+  stat_smooth()
+
+with(spaces.0900.0930, cor.test(at.0900, at.0930))
+```
+
+This is good correlation! Does it depend on the rain?
+
+```{r, warning=FALSE}
+ggplot(spaces.0900.0930, aes(x=at.0900, y=at.0930, color=rain)) +
+  geom_jitter() +
+  stat_smooth()
+
+with(spaces.0900.0930, cor.test(at.0900[rain], at.0930[rain]))
+with(spaces.0900.0930, cor.test(at.0900[!rain], at.0930[!rain]))
+```
+
+Not much, if at all.
+
+We can construct a model
+
+```{r}
+summary(lm(at.0930 ~ at.0900, spaces.0900.0930))
+```
+
+with an R^2 of 0.87, which is pretty good. But this isn't the best we can do, because it groups all stations together. Ideally we would create one model per station, with inputs from every station.
+
+```{r}
+# Construct a data frame with both long and wide properties. For every day for
+# every station, we indicate spaces in that station at 0930, and spaces in all
+# stations at 0900.
+get.station <- function(short, long) {
+  tmp <- spaces.0900.0930[spaces.0900.0930$name==long,
+                          c('updated.date', 'at.0900')]
+  names(tmp)[2] <- short
+  return(tmp)
+}
+spaces.tmp <- merge(spaces.0900.0930, get.station('sp', 'Southampton Place'))
+spaces.tmp <- merge(spaces.tmp, get.station('hh', 'High Holborn'))
+spaces.tmp <- merge(spaces.tmp, get.station('bp', 'Bury Place'))
+spaces.tmp <- merge(spaces.tmp, get.station('es', 'Earnshaw Street'))
+
+summary(lm(at.0930 ~ sp+hh+bp+es,
+           spaces.tmp[spaces.tmp$name=='Southampton Place',]))
+summary(lm(at.0930 ~ sp+hh+bp+es,
+           spaces.tmp[spaces.tmp$name=='High Holborn',]))
+summary(lm(at.0930 ~ sp+hh+bp+es,
+           spaces.tmp[spaces.tmp$name=='Bury Place',]))
+summary(lm(at.0930 ~ sp+hh+bp+es,
+           spaces.tmp[spaces.tmp$name=='Earnshaw Street',]))
+```
+
+Southampton Place has slightly regressed, but the others have improved slightly. (It's important to note that this doesn't make our model worse for Southampton Place than the aggregate model. The aggregate model was just overconfident on that station.)
