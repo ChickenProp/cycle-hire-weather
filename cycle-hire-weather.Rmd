@@ -553,7 +553,7 @@ I took advantage of binning to calculate specific summary functions. All station
 
 ## Reflection
 
-I've learned a lot about how to fight ggplot when it doesn't do exactly what I want by default, and in particular about how to shape my data.
+I've learned a lot about how to fight ggplot when it doesn't do exactly what I want by default, and in particular about how to shape my data for it.
 
 I feel like a data frame isn't an ideal structure for the data I have. The fact that I had to create `prev.*` and `d.*` copies of those columns that need it seems suboptimal, ideally I would have wanted to be able to refer directly to offset rows in the data. (For example, there's currently no easy way to ask "what's the difference between the number of bikes now and 30 minutes ago?") But I couldn't find anything that worked better. In particular, time series only allow one data type, so I would have had to fight to use them at all, and I don't know if they would have been any more useful.
 

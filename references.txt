@@ -1,0 +1,6 @@
+I certainly made much use of stack overflow, the documentation for R, ggplot,
+dplyr, etc., and any number of other resources, but I don't remember specific
+ones any more.
+
+I did ask one specific question in the course of this project.
+http://stackoverflow.com/questions/30243314/faceted-density-histogram
