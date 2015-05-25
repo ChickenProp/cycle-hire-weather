@@ -65,6 +65,33 @@ Fields:
 
 ---
 
-After dropping fields that I don't use, renaming the rest, and adding some, I end up with:
+After dropping fields that I don't use, renaming the rest, and adding some, I
+end up with:
 
-(fill this in later)
+- updated: The date-time of the observation.
+- updated.date, updated.time: The date and time, separately.
+- weekday, is.weekday: The day of the week, and whether it falls during the
+  working week.
+- name: The station name.
+- num.bikes, num.spaces, num.docks: The reported number of bikes and empty
+  slots, and the derived total number of accessible docks.
+- t.min, t, t.max: Temperature readings for the day.
+- wind, wind.max, gust: Wind readings for the day.
+- rain, precip.mm: Respectively boolean and numeric indicators of rainfall.
+- fog: Boolean, fog presence.
+- prev.updated*, prev.num*: The updated* and num* fields from the *previous*
+  observation.
+- d.updated, d.num.bikes: The difference between the previous and current
+  observations for these fields.
+
+Towards the end, I add the field `updated.time.bin`, which rounds
+`updated.time` to the nearest ten minutes. I use this to construct a new data
+frame with fields:
+
+- updated.date, name, rain: As in the original data frame.
+- at.0900, at.0930: The number of spaces available in that station, on that
+  date, at those times.
+
+I also have a separate data frame holding just the weather data. (Of note,
+there are a few days with no bike updates, so the weather data would look
+slightly different if we only took it from the main data frame.)
