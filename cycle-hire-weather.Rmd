@@ -152,22 +152,30 @@ ggplot(bikes.all, aes(x=d.updated, y=..count..+1)) +
 A few outliers. Let's zoom in on them.
 
 ```{r, cache=TRUE}
+# Histogram of only those entries with more than 5000 minutes between updates.
 ggplot(bikes.all[bikes.all$d.updated >= 5000,], aes(x=d.updated)) +
   geom_histogram(binwidth=5)
+
+# And the times of those entries.
 bikes.all[bikes.all$d.updated >= 5000, c('name', 'prev.updated', 'updated')]
 ```
 
 and on the lower ones:
 
 ```{r, cache=TRUE}
+# Entries with less than 5000 minutes between updates, on a log-y scale.
+# The ..count..+1 avoids ugly blocks hanging down where there are no entries.
 ggplot(bikes.all[bikes.all$d.updated < 5000,], 
        aes(x=d.updated, y=..count..+1)) +
   geom_histogram(binwidth=5) +
   scale_y_log10()
 
+# The times of entries with between 2000 and 5000 minutes between updates.
 bikes.all[bikes.all$d.updated >= 2000 & bikes.all$d.updated < 5000,
           c('name', 'prev.updated', 'updated')]
 
+# Now entries with less than 60 minutes between updates, no longer on a 
+# log scale.
 ggplot(bikes.all[bikes.all$d.updated < 60,], aes(x=d.updated)) + 
   geom_histogram(binwidth=1)
 ```
@@ -213,30 +221,38 @@ table(weather$rain, weather$precip.mm != 0)
 Journeys taken on rainy vs. non-rainy days, for different measures of rain:
 
 ```{r, warning=FALSE, cache=TRUE}
-ggplot(group_by(bikes, rain) %>% mutate(count=1/length(rain)),
-       aes(x=d.num.bikes, y=count)) + 
+# Every entry in bikes gets a new column, which is the reciprocal number of 
+# entries with the same value for rain. Then we stack bars of that height on
+# top of each other.
+#   Note that this doesn't render very well. Horizontal stripes are a rendering
+# artifact, not part of the data.
+ggplot(group_by(bikes, rain) %>% mutate(recip.count=1/length(rain)),
+       aes(x=d.num.bikes, y=recip.count)) + 
   geom_bar(stat='identity') +
   scale_x_discrete() +
   facet_wrap(~rain)
 
+# Mean absolute change in number of bikes, depending on value of rain.
 group_by(bikes, rain) %>% summarise(mean(abs(d.num.bikes)))
 
+# Same thing, but factored over whether precip.mm is nonzero.
 bikes$rain2 <- bikes$precip.mm != 0
-ggplot(group_by(bikes, rain2) %>% mutate(count=1/length(rain2)),
-       aes(x=d.num.bikes, y=count)) + 
+ggplot(group_by(bikes, rain2) %>% mutate(recip.count=1/length(rain2)),
+       aes(x=d.num.bikes, y=recip.count)) + 
   geom_bar(stat='identity') +
   scale_x_discrete() +
   facet_wrap(~rain2)
 
 group_by(bikes, rain2) %>% summarise(mean(abs(d.num.bikes)))
 
+# Mean absolute change, depending on values of both rain and rain2.
 group_by(bikes, rain, rain2) %>% summarise(mean(abs(d.num.bikes)))
 ```
 
 And foggy versus non-foggy days:
 
 ```{r, warning=FALSE, cache=TRUE}
-ggplot(group_by(bikes, fog) %>% mutate(count=1/length(fog)),
+ggplot(group_by(bikes, fog) %>% mutate(recip.count=1/length(fog)),
        aes(x=d.num.bikes, y=count)) + 
   geom_bar(stat='identity') +
   scale_x_discrete() +
@@ -435,6 +451,9 @@ We see heavy leftward skews overnight, with much flatter (but somewhat right-ske
 We can also check correlation between times more distant than a single tick. If I check the slots available when I leave the house, can I learn how many will be there when I arrive?
 
 ```{r, warning=FALSE, cache=TRUE}
+# Take the number of spaces at 0900 and 0930 in each station on each day, in 
+# wide format (i.e. both in the same row). If there are multiple entries in a 
+# single bin, take the mean number of spaces.
 spaces.0900.0930 <- 
   dcast(bikes[bikes$updated.time.bin %in% as.time(c('0900', '0930')),], 
         updated.date + name + rain + is.weekday ~ 
