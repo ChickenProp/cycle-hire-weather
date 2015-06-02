@@ -258,6 +258,7 @@ cor.test(bikes$wind, abs(bikes$d.num.bikes))
 ```
 
 Length of time spent with a given number of active docks:
+
 ```{r, echo=FALSE, warning=FALSE, cache=TRUE}
 ggplot(bikes, aes(x=prev.num.docks, y=d.updated/60/24)) +
   geom_histogram(stat='identity') +
@@ -398,23 +399,23 @@ bikes.wide$total <- with(bikes.wide, sp + hh + bp + es)
 Using this, we can check correlation between each station:
 
 ```{r, echo=FALSE, warning=FALSE, cache=TRUE}
-ggpairs(bikes.wide, columns=3:6,
+ggpairs(select(bikes.wide, sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 ```
 
 Correlations range between 0.7 and 0.757, and the scatter plots all look pretty similar. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
 
 ```{r, warning=FALSE, cache=TRUE}
-ggpairs(bikes.wide[bikes.wide$time == as.time('0930'),], columns=3:6,
+ggpairs(select(filter(bikes.wide, time == as.time('0930')), sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 
-ggpairs(bikes.wide[bikes.wide$time == as.time('1800'),], columns=3:6,
+ggpairs(select(filter(bikes.wide, time == as.time('1800')), sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 
-ggpairs(bikes.wide[bikes.wide$time == as.time('0000'),], columns=3:6,
+ggpairs(select(filter(bikes.wide, time == as.time('0000')), sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 
-ggpairs(bikes.wide[bikes.wide$time == as.time('1200'),], columns=3:6,
+ggpairs(select(filter(bikes.wide, time == as.time('1200')), sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 
 ```
