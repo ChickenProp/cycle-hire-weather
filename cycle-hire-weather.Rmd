@@ -66,28 +66,42 @@ read.bikes <- function (fname) {
   names(bikes) <- c('updated', 'name', 'num.bikes', 'num.spaces')
   bikes$updated <- as.POSIXct(strptime(bikes$updated, "%Y-%m-%dT%H:%M:%S%z", 
                                        tz='GMT'))
-  
-  # Add columns derived from existing ones.
-  bikes$updated.time <- as.time(bikes$updated)
-  bikes$updated.date <- as.Date(bikes$updated)
-  bikes$num.docks <- with(bikes, num.bikes+num.spaces)
-  bikes$weekday <- wday(bikes$updated.date, label=T)
-  bikes$is.weekday <- wday(bikes$updated.date) %in% seq(2,6)
 
   # Add columns for prev and diff between updates. I feel like there should be
   # a better way to do this, but I haven't found it. (Time series don't seem to
   # work very well.) Only add ones I actually use.
   bikes$prev.updated <- c(as.POSIXct(NA), head(bikes$updated, -1))
   attributes(bikes$prev.updated)$tzone <- 'GMT'
-  bikes$prev.updated.time <- as.time(bikes$prev.updated)
-  bikes$prev.updated.date <- as.Date(bikes$prev.updated)
   bikes$prev.num.bikes <- c(NA, head(bikes$num.bikes, -1))
-  bikes$prev.num.docks <- c(NA, head(bikes$num.docks, -1))
 
   bikes$d.updated <- with(bikes, as.numeric(updated - prev.updated))
   bikes$d.num.bikes <- with(bikes, num.bikes - prev.num.bikes)
   
-  return(bikes)
+  # The timestamps are given in absolute time, but we're interested in clock
+  # time, which was +1hr before 2013-10-27 and from 2014-03-30. Note that we
+  # need to do this *after* creating d.updated, or d.updated might be wrong
+  # around timezone boundaries.
+  no.bst <- strptime(c('2013-10-27 01:00:00', '2014-03-30 02:00:00'),
+                     '%Y-%m-%d %H:%M:%S', tz='GMT')
+  adj.bst <- function (ct)
+    ct + ifelse(no.bst[1] <= ct & ct <= no.bst[2], 0, 3600)
+  bikes$updated <- adj.bst(bikes$updated)
+  bikes$prev.updated <- adj.bst(bikes$prev.updated)
+
+  # Add columns derived from existing ones.
+  bikes$updated.time <- as.time(bikes$updated)
+  bikes$updated.date <- as.Date(bikes$updated)
+  bikes$num.docks <- with(bikes, num.bikes+num.spaces)
+
+  bikes$prev.updated.time <- as.time(bikes$prev.updated)
+  bikes$prev.updated.date <- as.Date(bikes$prev.updated)
+  bikes$prev.num.docks <- c(NA, head(bikes$num.docks, -1))
+
+  bikes$weekday <- wday(bikes$updated.date, label=T)
+  bikes$is.weekday <- wday(bikes$updated.date) %in% seq(2,6)
+
+  # Remove the first row, to avoid NAs in prev.* and d.* columns.
+  return(bikes[-1,])
 }
 
 bikes <- rbind(read.bikes('bikes-sp.csv'),
@@ -253,7 +267,7 @@ And foggy versus non-foggy days:
 
 ```{r, warning=FALSE, cache=TRUE}
 ggplot(group_by(bikes, fog) %>% mutate(recip.count=1/length(fog)),
-       aes(x=d.num.bikes, y=count)) + 
+       aes(x=d.num.bikes, y=recip.count)) +
   geom_bar(stat='identity') +
   scale_x_discrete() +
   facet_wrap(~fog)
