@@ -386,9 +386,9 @@ ggplot(bikes, aes(x=updated.time, y=num.bikes, color=rain)) +
 
 ## Multivariate Analysis
 
-There's very strong correlation between the number of bikes at each axis. This is as expected, especially given what we saw about `d.num.bikes` previously. The colors don't show any particular station-dependent trends.
+There's very strong correlation between the number of bikes in adjacent entries. This is as expected, especially given what we saw about `d.num.bikes` previously. The colors don't show any particular station-dependent trends.
 
-The correlation also looks strong between the number of bikes at each station at any given time. Since they're all close to each other, that's not surprising either. The time is also a big factor, with large numbers of bikes in the stations during office hours, and few numbers in the evening and early morning.
+The correlation also looks strong between the number of bikes at each station at any given time. Since they're all close to each other, that's not surprising either. The time is also a big factor, with large numbers of bikes in the stations during office hours, and few numbers in the evening and early morning. There's a slight dip around 1pm, which could be related to people using them on their lunch breaks.
 
 Rain reduces the variance, with fewer bikes during office hours and more outside of them.
 
@@ -419,7 +419,8 @@ rm(tmp)
 # }
 # bikes$updated.time.bin <- as.time(bikes$updated.time.bin)
 
-# Create wide-format data. The station ordering comes from the factor levels of # bikes$name, which comes from the order I originally loaded them.
+# Create wide-format data. The station ordering comes from the factor levels of
+# bikes$name, which comes from the order I originally loaded them.
 bikes.wide <- dcast(bikes, updated.date + updated.time.bin ~ name,
                     value.var='num.bikes', fun.aggregate=mean)
 names(bikes.wide) <- c('date', 'time', 'sp', 'hh', 'bp', 'es')
@@ -433,7 +434,7 @@ ggpairs(select(bikes.wide, sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 ```
 
-Correlations range between 0.7 and 0.757, and the scatter plots all look pretty similar. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
+Correlations range between 0.703 and 0.758, and the scatter plots and density histograms all look pretty similar. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
 
 ```{r, warning=FALSE, cache=TRUE}
 ggpairs(select(filter(bikes.wide, time == as.time('0930')), sp:es),
@@ -451,6 +452,18 @@ ggpairs(select(filter(bikes.wide, time == as.time('1200')), sp:es),
 ```
 
 The correlations are almost all lower. That surprised me, but I think it's an example of [Simpson's paradox](http://en.wikipedia.org/wiki/Simpson%27s_paradox). I note that the darkest points in the graph are at midnight, with no bikes in any station much of the time. Bikes are periodically moved in vans to account for anticipated demand; I assume that these stations are emptied most nights to prepare for people coming to work in the morning.
+
+An interesting point is that the weakest correlation on any of the graphs is 0.149, between Earnshaw Street and Bury Place at 1800. But the strongest correlation at a specific time is 0.757, also between those two stations, at 0930.
+
+We also see the density charts sometimes having very different shapes, especially at 0930 and 1800. But this seems to be at least partly to do with the way that `ggpairs` chooses the axes on its density plots. For example, here's 0930:
+
+```{r, echo=FALSE, cache=TRUE}
+ggplot(bikes[at.time('0930'),], aes(x=num.bikes)) + 
+  geom_density() + 
+  facet_wrap(~name, scales='free')
+```
+
+The troughs look a lot less significant now.
 
 We can view a histogram of the total number of bikes available at different times:
 
@@ -500,7 +513,7 @@ We can construct a model
 summary(lm(at.0930 ~ at.0900, spaces.0900.0930))
 ```
 
-with an R^2 of 0.87, which is pretty good. But this isn't the best we can do, because it groups all stations together. Ideally we would create one model per station, with inputs from every station.
+with an R^2 of 0.79, which is okay. But this isn't the best we can do, because it groups all stations together. Ideally we would create one model per station, with inputs from every station.
 
 ```{r, cache=TRUE}
 # Construct a data frame with both long and wide properties. For every day for
@@ -527,7 +540,7 @@ summary(lm(at.0930 ~ sp+hh+bp+es,
            spaces.tmp[spaces.tmp$name=='Earnshaw Street',]))
 ```
 
-Southampton Place has slightly regressed, but the others have improved slightly. (It's important to note that this doesn't make our model worse for Southampton Place than the aggregate model. The aggregate model was just overconfident on that station.)
+Southampton Place has slightly regressed, but the others have improved slightly. In particular, Bury Place gets an R^2 of 0.89, which is pretty good. (It's important to note that this doesn't make our model worse for Southampton Place than the aggregate model. The aggregate model was just overconfident on that station.)
 
 ## Final plots and summary
 
@@ -583,7 +596,7 @@ ggplot(bikes, aes(x=updated.time.bin, y=num.bikes, color=name)) +
   guides(color=guide_legend(title='Station'))
 ```
 
-I took advantage of binning to calculate specific summary functions. All stations show similar patterns: at night, there are few bikes available; during office hours, there are almost always some, and the 10-90 percentile range is a lot higher.
+I took advantage of binning to calculate specific summary functions. All stations show similar patterns: at night, there are few bikes available; during office hours, there are almost always some, and the 10-90 percentile range is a lot higher. The trough around 1pm in the previous version of this plot no longer shows up, which makes me suspect it was simply an artifact of the smoothing method.
 
 ## Reflection
 
@@ -597,4 +610,6 @@ In general, it seems that weather doesn't have much impact on bike usage. I chec
 
 On the other hand, we can make pretty good predictions about future bike (and slot) availability just from current availability. An ambitious future project might be a prediction system. A user could specify a station and an arrival time, and the system could tell her how likely it would be that she could find a slot in that station and nearby ones, and suggest an earlier arrival time that would increase that chance.
 
-One thing I didn't examine was [public holidays](http://en.wikipedia.org/wiki/Bank_holiday#List_of_current_holidays_in_the_United_Kingdom.2C_Ireland_and_the_Isle_of_Man). For example, we might ask whether, on plot 2 above, many of the points where spaces were freed up fell on holidays. (We can calculate 128 points above the line, and only 8*4 = 32 of them could be on public holidays, but that's still potentially up to a quarter of them.)
+One thing I didn't examine was [public holidays](http://en.wikipedia.org/wiki/Bank_holiday#List_of_current_holidays_in_the_United_Kingdom.2C_Ireland_and_the_Isle_of_Man). For example, we might ask whether, on plot 2 above, many of the points where spaces were freed up fell on holidays. (We can calculate 85 points above the line, and only 8*4 = 32 of them could be on public holidays, but that's still potentially a third of them.)
+
+After initially submitting this report, I noticed a big problem. All timestamps were collected and reported in physical time, but bike usage patterns are going to be related to clock time. So some of my graphs, particularly later ones, were mixing in data from two different clock times (e.g. 09:00 and 10:00) as if they were the same. I've corrected that error in this version.
