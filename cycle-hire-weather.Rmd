@@ -5,9 +5,19 @@ output: html_document
 London Cycle Hires and Weather
 ==============================
 
-My goal is to investigate usage of the London cycle hire scheme, and in particular how it varies with the weather.
+My goal is to investigate usage of the London cycle hire scheme, and in particular how it varies with the weather. I'm running an analysis from July 2013 to June 2014.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
+I'm using two data sets here. Daily weather data comes from [Weather Underground](http://www.wunderground.com/history/airport/EGLL/2013/7/1/CustomHistory.html?dayend=30&monthend=6&yearend=2014&req_city=&req_state=&req_statename=&reqdb.zip=&reqdb.magic=&reqdb.wmo=), using the weather station at London Heathrow airport.
+
+(London City Airport is closer to the bike stations that I use, but the data
+from that airport reports 0 precipitation on every single day. The data from
+Heathrow seems to be more complete, and I expect it to be almost as relevant.)
+
+I collected the cycle hire data myself, over the course of the year, by downloading CSV files from an [unofficial API](http://borisapi.heroku.com) which now appears to be defunct. It has a granularity of about ten minutes. That's about 50,000 entries per docking station for the year, so for this analysis, I'm only using the data from four docking stations near my office.
+
+All data and source code used for this project can be found in the [git repository](https://github.com/ChickenProp/cycle-hire-weather).
+
+```{r load.libs, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
 library(ggplot2)
 library(reshape2)
 library(dplyr)
@@ -16,7 +26,7 @@ library(GGally)
 library(scales)
 ```
 
-```{r, echo=FALSE, cache=TRUE}
+```{r parse.data, echo=FALSE, cache=TRUE}
 # First load the weather.
 
 weather <- read.csv('weather.csv')
@@ -114,7 +124,7 @@ bikes.all <- merge(x=bikes, y=weather, by.x='updated.date', by.y='date')
 bikes <- subset(bikes.all, d.updated <= 15)
 ```
 
-```{r, echo=FALSE, cache=TRUE}
+```{r at.time, echo=FALSE, cache=TRUE}
 # I also want to look at the number of bikes available at specific times. Since 
 # I only have snapshots, I'm going to take the first observation after that 
 # time on any given day. Here's a function that lets me do that. It takes a 
@@ -128,57 +138,68 @@ at.time <- function(time) {
 }
 ```
 
-## Univariate Plots Section
+Exploring the weather data
+--------------------------
 
-Temperature:
+#### Temperature
 
-```{r, echo=FALSE, cache=TRUE}
+```{r temp.1v, echo=FALSE, cache=TRUE}
 temps <- melt(weather, id.vars='date', measure.vars=c('t.min','t','t.max'))
 ggplot(temps, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(temps, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
 
-Rainfall:
+The temperature is a little surprising. I didn't expect the graphs to be bimodal. But we would expect the three measures to have similar shapes, and bimodality could be caused by e.g. an abrupt shift between summer and winter.
 
-```{r, echo=FALSE, cache=TRUE}
+#### Rainfall
+
+```{r rain.1v, echo=FALSE, cache=TRUE}
 ggplot(weather, aes(x=rain)) + geom_histogram()
 ggplot(weather, aes(x=precip.mm)) + geom_histogram(binwidth=0.2)
+```
+
+According to the `rain` column, There are over 225 rainy days and only about 125 non-rainy days. But by far the most common bin for `precip.mm` is the leftmost one. Table of values of `precip.mm`:
+
+```{r rain.1v.table, echo=FALSE, cache=TRUE}
 table(weather$precip.mm)
 ```
 
-Wind:
+Although more than half of observations have `rain == TRUE`, more than half of them also have `precip.mm == 0`, which needs more investigation.
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE}
+#### Wind
+
+```{r wind.1v, echo=FALSE, warning=FALSE, cache=TRUE}
 winds <- melt(weather, id.vars='date',
               measure.vars=c('wind','wind.max','gust'))
 ggplot(winds, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(winds, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
 
-Time between updates:
+Unlike with temperature, the three measures look different.
 
-```{r, cache=TRUE}
+### Exploring the bike data
+
+#### Time between updates
+
+```{r dt.1v, cache=TRUE}
+# Histogram of d.updated, on a log-y scale. The ..count..+1 avoids ugly blocks
+# hanging down where there are no entries in a bin.
 ggplot(bikes.all, aes(x=d.updated, y=..count..+1)) + 
   geom_histogram(binwidth=20) +
   scale_y_log10()
 ```
 
-A few outliers. Let's zoom in on them.
+There are a few outliers here. Not all the lines are visible due to rendering artifacts, but above 5000, we only have five entries:
 
-```{r, cache=TRUE}
-# Histogram of only those entries with more than 5000 minutes between updates.
-ggplot(bikes.all[bikes.all$d.updated >= 5000,], aes(x=d.updated)) +
-  geom_histogram(binwidth=5)
-
-# And the times of those entries.
+```{r dt.1v.right, cache=TRUE}
 bikes.all[bikes.all$d.updated >= 5000, c('name', 'prev.updated', 'updated')]
 ```
 
-and on the lower ones:
+The first four of these happened when my collection script broke and I failed to realize it. The other occurred when Southampton Place was taken out of service temporarily.
 
-```{r, cache=TRUE}
-# Entries with less than 5000 minutes between updates, on a log-y scale.
-# The ..count..+1 avoids ugly blocks hanging down where there are no entries.
+Let's zoom in on the lower ones:
+
+```{r dt.1v.left, cache=TRUE}
 ggplot(bikes.all[bikes.all$d.updated < 5000,], 
        aes(x=d.updated, y=..count..+1)) +
   geom_histogram(binwidth=5) +
@@ -194,9 +215,13 @@ ggplot(bikes.all[bikes.all$d.updated < 60,], aes(x=d.updated)) +
   geom_histogram(binwidth=1)
 ```
 
-Date and time of update:
+Then there are a several instances where the time between updates is unusually large, on the order of hours or days. It looks like these happened to all stations simultaneously, suggesting problems with either my collection script or the API, rather than problems with individual locations.
 
-```{r, echo=FALSE, cache=TRUE}
+But in the vast majority of cases, updates are approximately ten minutes apart. This encourages me to take a subset of the data (`bikes.all` -> `bikes`), considering only entries with `d.updated` less than 15 minutes. This eliminates many outliers in future graphs.
+
+#### Date and time of update
+
+```{r date.time.1v, echo=FALSE, cache=TRUE}
 ggplot(bikes.all, aes(x=updated.date)) + 
   geom_histogram(binwidth=1) + 
   scale_x_date()
@@ -206,25 +231,83 @@ ggplot(bikes.all, aes(x=updated.time)) +
   scale_x_datetime()
 ```
 
-## Univariate Analysis
+All times of day are approximately equally represented to within ten minutes, which is good. There are five noticeable troughs preceeded by spikes, but they probably don't signify much. Dates are a lot less uniform, however. Even apart from the ten-day period where my script was broken, many days have significantly fewer updates than typical, and some have none at all.
 
-The temperature is a little surprising. I didn't expect the graphs to be bimodal. But we would expect the three measures to have similar shapes, and bimodality could be caused by e.g. an abrupt shift between summer and winter.
+#### Length of time spent with a given number of active docks
 
-Although more than half of observations have `rain == TRUE`, more than half of them also have `precip.mm == 0`, which needs more investigation.
+```{r ndocks.time.2v, echo=FALSE, warning=FALSE, cache=TRUE}
+ggplot(bikes, aes(x=prev.num.docks, y=d.updated/60/24)) +
+  geom_histogram(stat='identity') +
+  facet_wrap(~name)
+```
 
-There are five instances where the time between updates is approximately ten days. Four of these (one per station) happened when my collection script broke and I failed to realize it. The other occurred when Southampton Place was taken out of service temporarily.
+It was common for every station to report less than a full complement of docks. At least two had a full complement for less than half the time (High Holborn and Bury place are unclear in that respect). This isn't surprising, since a bike reported as defective will be locked in, using up a slot but not being available for hire.
 
-Then there are a several instances where the time between updates is unusually large, on the order of hours or days. It looks like these happened to all stations simultaneously, suggesting problems with either my collection script or the API, rather than problems with individual locations.
+#### Journeys taken throughout the year
 
-But in the vast majority of cases, updates are approximately ten minutes apart. This encourages me to take a subset of the data (`bikes.all` -> `bikes`), eliminating outliers in future graphs.
+```{r date.journeys.2v, cache=TRUE}
+ggplot(bikes, aes(x=updated, y=abs(d.num.bikes))) + 
+  geom_jitter(alpha=0.05) + stat_smooth()
+```
 
-All times of day are approximately equally represented, which is good. Dates are a lot less uniform, however. Even apart from the ten-day period where my script was broken, many days have significantly fewer updates than typical, and some have none at all.
+The time of year makes very little difference to the number of rides. There appears to be a slight sinusoidal relationship, but it's very weak. (I didn't do a PMCC test because that assumes that any relationship is linear, which we would naively expect not to be the case here, and also doesn't look true from the graph.)
+
+#### Journeys by weekday
+
+```{r weekday.journeys.2v, warning=FALSE, cache=TRUE}
+ggplot(bikes, aes(x=weekday, y=abs(d.num.bikes))) + 
+  geom_bar(stat='identity')
+ggplot(bikes, aes(x=weekday, y=num.bikes)) + geom_boxplot()
+
+ggplot(bikes, aes(x=num.bikes/num.docks)) + 
+  geom_density() + 
+  facet_wrap(~weekday)
+```
+
+Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week, but the distribution does. Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work).
+
+(Since the stations have different numbers of docks, I did a graph of fullness rather than of number of bikes. The density plot doesn't show peaks exactly at 0 and 1 because of how the density window works, but histograms of num.bikes and num.spaces show that that's where they are. It would be difficult to use a histogram for this graph because there's no sensible binwidth.)
+
+#### Number of slots available at 0930
+
+(when I'm trying to arrive at work)
+
+This is a proportional frequency plot: within each facet of the graph, the heights of the bins add up to 1. Only weekdays are considered.
+
+```{r slots.0930.2v, echo=FALSE, cache=TRUE}
+# Every entry in bikes gets a new column, which is the reciprocal number of 
+# entries with the same value for name. Then we stack bars of that height on
+# top of each other.
+ggplot(bikes[at.time('0930') & bikes$is.weekday,] %>% 
+         group_by(name) %>% 
+         mutate(frequency=1/length(name)),
+       aes(x=num.spaces, y=frequency)) +
+  geom_bar(stat='identity',binwidth=1) +
+  facet_wrap(~name)
+```
+
+About 40% of the time, Earnshaw street has no spaces. That's actually less than I'd realized. It's directly outside my office, and I haven't even been checking it because I'd assumed it was always full.
+
+#### And at 0940
+
+(in case I'm running late)
+
+```{r slots.0940.2v, echo=FALSE, cache=TRUE}
+ggplot(bikes[at.time('0940') & bikes$is.weekday,] %>% 
+         group_by(name) %>% 
+         mutate(frequency=1/length(name)),
+       aes(x=num.spaces, y=frequency)) +
+  geom_bar(stat='identity', binwidth=1) +
+  facet_wrap(~name)
+```
+
+If I'm late, I have slightly less chance of finding a docking station, but not much less.
 
 ## Bivariate Plots Section
 
 Rainfall as measured by `precip.mm` versus as measured by `rain`:
 
-```{r, echo=FALSE, cache=TRUE}
+```{r rain.precip.2v, echo=FALSE, cache=TRUE}
 ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
 ggplot(weather, aes(x=precip.mm, fill=rain, color=rain)) + 
   geom_histogram(position='stack', binwidth=0.1)
@@ -234,10 +317,8 @@ table(weather$rain, weather$precip.mm != 0)
 
 Journeys taken on rainy vs. non-rainy days, for different measures of rain:
 
-```{r, warning=FALSE, cache=TRUE}
-# Every entry in bikes gets a new column, which is the reciprocal number of 
-# entries with the same value for rain. Then we stack bars of that height on
-# top of each other.
+```{r rain.rain2.journeys.2v, warning=FALSE, cache=TRUE}
+
 #   Note that this doesn't render very well. Horizontal stripes are a rendering
 # artifact, not part of the data.
 ggplot(group_by(bikes, rain) %>% mutate(recip.count=1/length(rain)),
@@ -265,7 +346,7 @@ group_by(bikes, rain, rain2) %>% summarise(mean(abs(d.num.bikes)))
 
 And foggy versus non-foggy days:
 
-```{r, warning=FALSE, cache=TRUE}
+```{r fog.journeys.2v, warning=FALSE, cache=TRUE}
 ggplot(group_by(bikes, fog) %>% mutate(recip.count=1/length(fog)),
        aes(x=d.num.bikes, y=recip.count)) +
   geom_bar(stat='identity') +
@@ -277,7 +358,7 @@ group_by(bikes, fog) %>% summarise(mean(abs(d.num.bikes)))
 
 Journeys by temperature and wind:
 
-```{r, cache=TRUE}
+```{r temp.wind.journeys.2v, cache=TRUE}
 ggplot(bikes, aes(x=t, y=abs(d.num.bikes))) + 
   geom_jitter(alpha=0.05) + stat_smooth()
 cor.test(bikes$t, abs(bikes$d.num.bikes))
@@ -287,54 +368,7 @@ ggplot(bikes, aes(x=wind, y=abs(d.num.bikes))) +
 cor.test(bikes$wind, abs(bikes$d.num.bikes))
 ```
 
-Length of time spent with a given number of active docks:
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE}
-ggplot(bikes, aes(x=prev.num.docks, y=d.updated/60/24)) +
-  geom_histogram(stat='identity') +
-  facet_wrap(~name)
-```
-
-Journeys taken throughout the year:
-
-```{r, cache=TRUE}
-ggplot(bikes, aes(x=updated, y=abs(d.num.bikes))) + 
-  geom_jitter(alpha=0.05) + stat_smooth()
-```
-
-Journeys by weekday:
-
-```{r, warning=FALSE, cache=TRUE}
-ggplot(bikes, aes(x=weekday, y=abs(d.num.bikes))) + 
-  geom_bar(stat='identity')
-ggplot(bikes, aes(x=weekday, y=num.bikes)) + geom_boxplot()
-
-ggplot(bikes, aes(x=num.bikes/num.docks)) + 
-  geom_density() + 
-  facet_wrap(~weekday)
-```
-
-Number of slots available at 0930, when I'm trying to arrive at work:
-
-```{r, cache=TRUE}
-ggplot(bikes[at.time('0930') & bikes$is.weekday,] %>% 
-         group_by(name) %>% 
-         mutate(count=1/length(name)),
-       aes(x=num.spaces, y=count)) +
-  geom_bar(stat='identity',binwidth=1) +
-  facet_wrap(~name)
-```
-
-And at 0940, in case I'm running late:
-
-```{r, cache=TRUE}
-ggplot(bikes[at.time('0940') & bikes$is.weekday,] %>% 
-         group_by(name) %>% 
-         mutate(count=1/length(name)),
-       aes(x=num.spaces, y=count)) +
-  geom_bar(stat='identity',binwidth=1) +
-  facet_wrap(~name)
-```
 
 ## Bivariate Analysis
 
@@ -346,21 +380,13 @@ Taking `rain` to be our measure, slightly over 70% of observations had no bikes 
 
 On the other hand, fog, wind and temperature make approximately no difference.
 
-It was common for every station to report less than a full complement of docks. Two stations had a full complement less than half the time. This isn't surprising, since a bike reported as defective will be locked in, using up a slot but not being available for hire.
 
-The time of year makes very little difference to the number of rides. There appears to be a slight sinusoidal relationship, but it's very weak. (I didn't do a PMCC test on that because that assumes that any relationship is linear, which we would naively expect not to be the case here, and also doesn't look true from the graph.)
-
-Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week, but the distribution does. Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work).
-
-(Since the stations have different numbers of docks, I did a graph of fullness rather than of number of bikes. The density plot doesn't show peaks exactly at 0 and 1 because of how the window works, but histograms of num.bikes and num.spaces show that that's where they are. It would be difficult to use a histogram for this graph because there's no sensible binwidth.)
-
-If I'm late, I have slightly less chance of finding a docking station, but not much less.
 
 ## Multivariate Plots Section
 
 Correlation between #bikes between ticks:
 
-```{r, warning=FALSE, cache=TRUE}
+```{r bikes.prevbikes.name.mv, warning=FALSE, cache=TRUE}
 ggplot(bikes, aes(x=num.bikes, y=prev.num.bikes, color=name)) + 
   geom_jitter(alpha=0.05)
 
@@ -369,7 +395,7 @@ cor.test(bikes$num.bikes, bikes$prev.num.bikes)
 
 Bikes at any given time:
 
-```{r, warning=FALSE, cache=TRUE}
+```{r bikes.time.name.mv, warning=FALSE, cache=TRUE}
 ggplot(bikes, aes(x=updated.time, y=num.bikes, color=name)) + 
   geom_jitter(alpha=0.05, shape=1) +
   stat_smooth()
@@ -377,7 +403,7 @@ ggplot(bikes, aes(x=updated.time, y=num.bikes, color=name)) +
 
 Bikes depending on rain:
 
-```{r, warning=FALSE, cache=TRUE}
+```{r bikes.time.rain.mv, warning=FALSE, cache=TRUE}
 ggplot(bikes, aes(x=updated.time, y=num.bikes, color=rain)) +
   geom_jitter(alpha=0.05, shape=1) +
   stat_smooth()
@@ -400,7 +426,7 @@ To answer questions like that, we need to be somewhat forgiving with our definit
 
 I'm going to create bins ten minutes wide, and assign every observation to a bin. Then in each bin, we can ask how many bikes were at each station.
 
-```{r, cache=TRUE}
+```{r bin.time, cache=TRUE}
 # Round updated.time to the nearest ten minutes
 tmp <- as.numeric(bikes$updated.time) + 300
 bikes$updated.time.bin <- as.time(tmp - tmp%%600)
@@ -429,14 +455,14 @@ bikes.wide$total <- with(bikes.wide, sp + hh + bp + es)
 
 Using this, we can check correlation between each station:
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE}
+```{r ggpairs, echo=FALSE, warning=FALSE, cache=TRUE}
 ggpairs(select(bikes.wide, sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 ```
 
 Correlations range between 0.703 and 0.758, and the scatter plots and density histograms all look pretty similar. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
 
-```{r, warning=FALSE, cache=TRUE}
+```{r ggpairs.times, warning=FALSE, cache=TRUE}
 ggpairs(select(filter(bikes.wide, time == as.time('0930')), sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
 
@@ -457,7 +483,7 @@ An interesting point is that the weakest correlation on any of the graphs is 0.1
 
 We also see the density charts sometimes having very different shapes, especially at 0930 and 1800. But this seems to be at least partly to do with the way that `ggpairs` chooses the axes on its density plots. For example, here's 0930:
 
-```{r, echo=FALSE, cache=TRUE}
+```{r bikes.0930.density, echo=FALSE, cache=TRUE}
 ggplot(bikes[at.time('0930'),], aes(x=num.bikes)) + 
   geom_density() + 
   facet_wrap(~name, scales='free')
@@ -467,7 +493,7 @@ The troughs look a lot less significant now.
 
 We can view a histogram of the total number of bikes available at different times:
 
-```{r, warning=FALSE, cache=TRUE}
+```{r bikes.time.hists, warning=FALSE, cache=TRUE}
 ggplot(bikes.wide, aes(x=total)) + 
   geom_histogram(binwidth=1) + 
   facet_wrap(~time)
@@ -477,7 +503,7 @@ We see heavy leftward skews overnight, with much flatter (but somewhat right-ske
 
 We can also check correlation between times more distant than a single tick. If I check the slots available when I leave the house, can I learn how many will be there when I arrive?
 
-```{r, warning=FALSE, cache=TRUE}
+```{r cor.0900.0930, warning=FALSE, cache=TRUE}
 # Take the number of spaces at 0900 and 0930 in each station on each day, in 
 # wide format (i.e. both in the same row). If there are multiple entries in a 
 # single bin, take the mean number of spaces.
@@ -496,7 +522,7 @@ with(spaces.0900.0930, cor.test(at.0900, at.0930))
 
 This is good correlation! Does it depend on the rain?
 
-```{r, warning=FALSE, cache=TRUE}
+```{r cor.0900.0930.rain, warning=FALSE, cache=TRUE}
 ggplot(spaces.0900.0930, aes(x=at.0900, y=at.0930, color=rain)) +
   geom_jitter() +
   stat_smooth()
@@ -509,13 +535,13 @@ Not much, if at all.
 
 We can construct a model
 
-```{r, cache=TRUE}
+```{r lm, cache=TRUE}
 summary(lm(at.0930 ~ at.0900, spaces.0900.0930))
 ```
 
 with an R^2 of 0.79, which is okay. But this isn't the best we can do, because it groups all stations together. Ideally we would create one model per station, with inputs from every station.
 
-```{r, cache=TRUE}
+```{r lm.many, cache=TRUE}
 # Construct a data frame with both long and wide properties. For every day for
 # every station, we indicate spaces in that station at 0930, and spaces in all
 # stations at 0900.
@@ -546,7 +572,7 @@ Southampton Place has slightly regressed, but the others have improved slightly.
 
 ### Plot 1
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
+```{r final.plot.1, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
 ggplot(mutate(bikes.wide, timestr=strftime(time, '%H:%M', tz='GMT')),
        aes(x=total)) + 
   geom_histogram(binwidth=1) + 
@@ -560,7 +586,7 @@ The total number of bikes available changes gradually throughout the day, with f
 
 ### Plot 2
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
+```{r final.plot.2, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
 ggplot(subset(spaces.0900.0930, is.weekday),
        aes(x=at.0900, y=at.0930, color=name)) +
   geom_jitter(alpha=0.3, position=position_jitter(width=0.25, height=0.25)) +
@@ -580,7 +606,7 @@ This time around, I restricted the graph to weekdays only. It's rare for the num
 
 ### Plot 3
 
-```{r, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
+```{r final.plot.3, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
 ggplot(bikes, aes(x=updated.time.bin, y=num.bikes, color=name)) +
   geom_line(aes(linetype='1'), stat='summary', fun.y=mean) +
   geom_line(aes(linetype='2'), stat='summary', fun.y=median, alpha=0.5) +
@@ -606,7 +632,7 @@ I feel like a data frame isn't an ideal structure for the data I have. The fact 
 
 My data set itself isn't ideal, particularly in the amount of missing data. Unfortunately, I don't think any better historical bike record data is available. I think I have enough data to trust my conclusions.
 
-In general, it seems that weather doesn't have much impact on bike usage. I checked rain, fog, temperature and wind speed, and only rain made a significant difference. But since the rainfall data seems to be internally inconsistent, I don't know how much we can learn from it. It would be useful to validate it from another source.
+In general, it seems that weather doesn't have much impact on bike usage. I checked rain, fog, temperature and wind speed, and only rain made a significant difference. But since the rainfall data seems to be internally inconsistent, I don't know how much we can learn from it. It would be useful to validate it from another source. We might also learn more with finer-grained weather data. For example, when predicting bike availability at a specific time, it doesn't help much if we know whether or not it rained at all on a given day; but it might help more to know whether it was raining at that particular time.
 
 On the other hand, we can make pretty good predictions about future bike (and slot) availability just from current availability. An ambitious future project might be a prediction system. A user could specify a station and an arrival time, and the system could tell her how likely it would be that she could find a slot in that station and nearby ones, and suggest an earlier arrival time that would increase that chance.
 
