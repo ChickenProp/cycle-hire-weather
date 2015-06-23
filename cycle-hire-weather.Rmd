@@ -149,7 +149,7 @@ ggplot(temps, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(temps, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
 
-The temperature is a little surprising. I didn't expect the graphs to be bimodal. But we would expect the three measures to have similar shapes, and bimodality could be caused by e.g. an abrupt shift between summer and winter.
+The temperature graphs all look similar, and overlap a lot. The shape is a little surprising, as I didn't expect the graphs to be bimodal. It could potentially be caused by significant differences between summer and winter, with an abrupt shift between the two.
 
 #### Rainfall
 
@@ -193,7 +193,7 @@ ggplot(winds, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(winds, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
 
-Unlike with temperature, the three measures look different.
+Unlike with temperature, the three measures look different. All are right-skewed, although `gust` looks less so. There are several outliers (the isolated points on the box plots), and the quartiles don't overlap. The minimum gust speed (about 24) is almost as high as the median `wind.max`.
 
 Exploring the bike data
 -----------------------
@@ -283,7 +283,7 @@ ggplot(bikes, aes(x=num.bikes/num.docks)) +
   facet_wrap(~weekday)
 ```
 
-Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week, but the distribution does. Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work).
+Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week (5 on monday and friday, 4 on other days), but the distribution does. Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work).
 
 (Since the stations have different numbers of docks, I did a graph of fullness rather than of number of bikes. The density plot doesn't show peaks exactly at 0 and 1 because of how the density window works, but histograms of num.bikes and num.spaces show that that's where they are. It would be difficult to use a histogram for this graph because there's no sensible binwidth.)
 
@@ -569,7 +569,8 @@ summary(lm(at.0930 ~ sp+hh+bp+es,
 
 Southampton Place has slightly regressed, but the others have improved slightly. In particular, Bury Place gets an R^2 of 0.89, which is pretty good. (It's important to note that this doesn't make our model worse for Southampton Place than the aggregate model. The aggregate model was just overconfident on that station.)
 
-## Final plots and summary
+Final plots and summary
+-----------------------
 
 ### Plot 1
 
@@ -583,14 +584,14 @@ ggplot(mutate(bikes.wide, timestr=strftime(time, '%H:%M', tz='GMT')),
   ggtitle('Number of bikes available throughout the day')
 ```
 
-The total number of bikes available changes gradually throughout the day, with few bikes typically available at night, but often many available during the daytime.
+The total number of bikes available changes gradually throughout the day, with few bikes typically available at night, but often many available during the daytime. The distribution looks left-skewed from around 10:00 to 16:30, and right-skewed from around 19:00 to 07:30. The left skew is never as extreme as the right skew, but because the stations have different numbers of slots, that doesn't tell us much.
 
 ### Plot 2
 
 ```{r final.plot.2, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
 ggplot(subset(spaces.0900.0930, is.weekday),
        aes(x=at.0900, y=at.0930, color=name)) +
-  geom_jitter(alpha=0.3, position=position_jitter(width=0.25, height=0.25)) +
+  geom_jitter(alpha=0.3, position=position_jitter(width=0.2, height=0.2)) +
   stat_smooth(alpha=0.1, linetype='dashed') +
   scale_x_continuous(breaks=seq(0, 22)) +
   scale_y_continuous(breaks=seq(0, 22)) +
@@ -603,29 +604,44 @@ ggplot(subset(spaces.0900.0930, is.weekday),
   guides(color=guide_legend(title='Station'))
 ```
 
-This time around, I restricted the graph to weekdays only. It's rare for the number of stations to go up between 0900 and 0930. All four stations have similar usage patterns.
+This time around, I restricted the graph to weekdays only. It's rare for the number of stations to go up between 09:00 and 09:30. All four stations have similar usage patterns.
+
+At 09:00, if there are five or fewer spaces available, it looks as though the most common single outcome at 09:30 is no spaces at all.
+
+Points above the dotted black line are ones where more spaces were available at 09:30 than at 09:00. (Caveat: I've applied slight jittering, so points very close to that line are ones where the same number of spaces were available.) There are obviously much fewer of them. However, the top-left corner of the graph has a few points in it where the bottom-right corner is empty. The number of bikes never goes down by more than eleven, but it goes up by as much as fifteen.
 
 ### Plot 3
 
 ```{r final.plot.3, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
+# Get a data frame to easily plot the number of docking points at each station.
+docks <- merge(group_by(bikes, name) %>% summarise(docks=max(num.docks)),
+               data.frame(x=as.time(c(0, 86399))))
+
 ggplot(bikes, aes(x=updated.time.bin, y=num.bikes, color=name)) +
   geom_line(aes(linetype='1'), stat='summary', fun.y=mean) +
   geom_line(aes(linetype='2'), stat='summary', fun.y=median, alpha=0.5) +
   geom_line(aes(linetype='3'), stat='summary', fun.y=quantile, probs=0.9) +
   geom_line(aes(linetype='3'), stat='summary', fun.y=quantile, probs=0.1) +
+  geom_line(aes(x=x, y=docks, color=name, linetype='4'),
+            alpha=0.5, data=docks) +
   scale_x_datetime(breaks=as.POSIXct(seq(0, 86400, 3600*3),
                                      origin='1970-01-01'),
                    labels=date_format('%H:%M')) +
   xlab('Time') + ylab('Bikes available') +
   ggtitle('Number of bikes available by time and station') +
-  scale_linetype_manual(name='Statistic', values=c('solid', 'dashed', 'dotted'),
-                        labels=c('Mean', 'Median', '10th/90th percentile')) +
+  scale_linetype_manual(name='Statistic',
+                        values=c('solid', 'dashed', 'dotted', '15'),
+                        labels=c('Mean', 'Median', '10th/90th percentile',
+                                 'Total number of docks')) +
   guides(color=guide_legend(title='Station'))
 ```
 
 I took advantage of binning to calculate specific summary functions. All stations show similar patterns: at night, there are few bikes available; during office hours, there are almost always some, and the 10-90 percentile range is a lot higher. The trough around 1pm in the previous version of this plot no longer shows up, which makes me suspect it was simply an artifact of the smoothing method.
 
-## Reflection
+During the day, the number of bikes available is generally ranked by the number of docking slots at each station - so High Holborn has the least, and Bury Place has the most. When the bikes are taken around 18:00, High Holborn seems to lose them more slowly than the other stations. For Earnshaw Street and especially Bury Place, the 90th percentile lines suggest that those two stations were often completely full.
+
+Reflection
+----------
 
 I've learned a lot about how to fight ggplot when it doesn't do exactly what I want by default, and in particular about how to shape my data for it.
 
