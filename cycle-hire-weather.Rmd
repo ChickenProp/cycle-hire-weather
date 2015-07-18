@@ -149,7 +149,11 @@ ggplot(temps, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(temps, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
 
-The temperature graphs all look similar, and overlap a lot. The shape is a little surprising, as I didn't expect the graphs to be bimodal. It could potentially be caused by significant differences between summer and winter, with an abrupt shift between the two.
+These variables measure the minimum, average, and maximum daily temperatures.
+The graphs all look similar, and overlap a lot. The shape is a little
+surprising, as I didn't expect the density graphs to be bimodal. It could
+potentially be caused by significant differences between summer and winter, with
+an abrupt shift between the two.
 
 #### Rainfall
 
@@ -169,7 +173,7 @@ Although more than half of observations have `rain == TRUE`, more than half of t
 ```{r rain.precip.2v, echo=FALSE, cache=TRUE}
 ggplot(weather, aes(y=precip.mm, x=rain)) + geom_boxplot()
 ggplot(weather, aes(x=precip.mm, fill=rain, color=rain)) + 
-  geom_histogram(position='stack', binwidth=0.1)
+  geom_histogram(position='dodge', binwidth=0.1)
 ```
 
 The two measures don't always agree. Sometimes `rain` is false but `precip.mm` is nonzero; and often `rain` is true but `precip.mm` is zero. Neither of those is surprising individually: if `rain` is only counted when the rainfall exceeds a certain threshold, then that threshold could be large (giving false/nonzero) or small (giving true/zero). But the combination suggests that that isn't what's going on, and I don't know what is.
@@ -192,6 +196,8 @@ winds <- melt(weather, id.vars='date',
 ggplot(winds, aes(x=variable, y=value)) + geom_boxplot()
 ggplot(winds, aes(x=value, fill=variable)) + geom_density(alpha=0.3)
 ```
+
+These three measures of wind speed are all averages. `wind` is simply the average wind speed over a day. `wind.max` is the daily maximum of the average wind speed over a short time period (I think one minute). `gust` is the same thing, but with a shorter time period (I think 14 seconds).
 
 Unlike with temperature, the three measures look different. All are right-skewed, although `gust` looks less so. There are several outliers (the isolated points on the box plots), and the quartiles don't overlap. The minimum gust speed (about 24) is almost as high as the median `wind.max`.
 
@@ -252,11 +258,11 @@ ggplot(bikes.all, aes(x=updated.time)) +
 
 All times of day are approximately equally represented to within ten minutes, which is good. There are five noticeable troughs preceeded by spikes, but they probably don't signify much. Dates are a lot less uniform, however. Even apart from the ten-day period where my script was broken, many days have significantly fewer updates than typical, and some have none at all.
 
-#### Length of time spent with a given number of active docks
+#### Number of days spent with a given number of active docks
 
 ```{r ndocks.time.2v, echo=FALSE, warning=FALSE, cache=TRUE}
-ggplot(bikes, aes(x=prev.num.docks, y=d.updated/60/24)) +
-  geom_histogram(stat='identity') +
+ggplot(bikes, aes(x=prev.num.docks, weight=d.updated/60/24)) +
+  geom_bar(binwidth=1) + scale_x_discrete() +
   facet_wrap(~name)
 ```
 
@@ -274,8 +280,7 @@ The time of year makes very little difference to the number of rides. There appe
 #### Journeys by weekday
 
 ```{r weekday.journeys.2v, warning=FALSE, cache=TRUE}
-ggplot(bikes, aes(x=weekday, y=abs(d.num.bikes))) + 
-  geom_bar(stat='identity')
+ggplot(bikes, aes(x=weekday, weight=abs(d.num.bikes))) + geom_bar()
 ggplot(bikes, aes(x=weekday, y=num.bikes)) + geom_boxplot()
 
 ggplot(bikes, aes(x=num.bikes/num.docks)) + 
@@ -324,7 +329,7 @@ ggplot(bikes[at.time('0930') & bikes$is.weekday,] %>%
          group_by(name) %>% 
          mutate(frequency=1/length(name)),
        aes(x=num.spaces, y=frequency)) +
-  geom_bar(stat='identity',binwidth=1) +
+  geom_bar(stat='identity', binwidth=1) +
   facet_wrap(~name)
 ```
 
@@ -356,8 +361,8 @@ For different measures of rain:
 # Note that this doesn't render very well. Horizontal stripes are a rendering
 # artifact, not part of the data.
 ggplot(group_by(bikes, rain) %>% mutate(recip.count=1/length(rain)),
-       aes(x=d.num.bikes, y=recip.count)) + 
-  geom_bar(stat='identity') +
+       aes(x=d.num.bikes, weight=recip.count)) + 
+  geom_bar() +
   scale_x_discrete() +
   facet_wrap(~rain)
 
@@ -367,8 +372,8 @@ group_by(bikes, rain) %>% summarise(mean(abs(d.num.bikes)))
 # Same thing, but factored over whether precip.mm is nonzero.
 bikes$rain2 <- bikes$precip.mm != 0
 ggplot(group_by(bikes, rain2) %>% mutate(recip.count=1/length(rain2)),
-       aes(x=d.num.bikes, y=recip.count)) + 
-  geom_bar(stat='identity') +
+       aes(x=d.num.bikes, weight=recip.count)) + 
+  geom_bar() +
   scale_x_discrete() +
   facet_wrap(~rain2)
 
