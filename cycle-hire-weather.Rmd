@@ -253,7 +253,7 @@ ggplot(bikes.all, aes(x=updated.date)) +
 
 ggplot(bikes.all, aes(x=updated.time)) + 
   geom_histogram(binwidth=600) +
-  scale_x_datetime()
+  scale_x_datetime(labels=date_format('%H:%M'))
 ```
 
 All times of day are approximately equally represented to within ten minutes, which is good. There are five noticeable troughs preceeded by spikes, but they probably don't signify much. Dates are a lot less uniform, however. Even apart from the ten-day period where my script was broken, many days have significantly fewer updates than typical, and some have none at all.
@@ -279,13 +279,19 @@ The time of year makes very little difference to the number of rides. There appe
 
 #### Journeys by weekday
 
-```{r weekday.journeys.2v, warning=FALSE, cache=TRUE}
-ggplot(bikes, aes(x=weekday, weight=abs(d.num.bikes))) + geom_bar()
-ggplot(bikes, aes(x=weekday, y=num.bikes)) + geom_boxplot()
+```{r weekday.journeys.2v, warning=FALSE, cache=TRUE, echo=FALSE}
+ggplot(bikes, aes(x=weekday, weight=abs(d.num.bikes))) + 
+  geom_bar() +
+  ggtitle('Total absolute change in num.bikes')
+
+ggplot(bikes, aes(x=weekday, y=num.bikes)) + 
+  geom_boxplot() +
+  ggtitle('Number of bikes available')
 
 ggplot(bikes, aes(x=num.bikes/num.docks)) + 
   geom_density() + 
-  facet_wrap(~weekday)
+  facet_wrap(~weekday) +
+  ggtitle('Station fullness')
 ```
 
 Fewer journeys are taken on weekends. The median number of bikes available doesn't change much throughout the week (5 on monday and friday, 4 on other days), but the distribution does. Saturday and Sunday have noticeably different shapes to the others. They have a single peak, while weekdays are somewhat bimodal, with a small peak where the station is full (probably when people are arriving at work).
@@ -305,7 +311,7 @@ There's very strong correlation between the number of bikes in adjacent entries.
 
 #### Number of bikes at any given time
 
-```{r bikes.time.name.mv, warning=FALSE, cache=TRUE}
+```{r bikes.time.name.mv, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(bikes, aes(x=updated.time, y=num.bikes, color=name)) + 
   geom_jitter(alpha=0.05, shape=1) +
   stat_smooth()
@@ -355,16 +361,15 @@ Combining the two
 
 #### Journeys taken on rainy vs. non-rainy days
 
-For different measures of rain:
+Here, `rain` is the original variable in the dataset, and `rain2` simply measures whether `precip.mm` is nonzero. We have graphs looking at `d.num.bikes` on each type of day, and tables comparing its mean absolute value.
 
-```{r rain.rain2.journeys.2v, warning=FALSE, cache=TRUE}
-# Note that this doesn't render very well. Horizontal stripes are a rendering
-# artifact, not part of the data.
+```{r rain.rain2.journeys.2v, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(group_by(bikes, rain) %>% mutate(recip.count=1/length(rain)),
        aes(x=d.num.bikes, weight=recip.count)) + 
   geom_bar() +
   scale_x_discrete() +
-  facet_wrap(~rain)
+  facet_wrap(~rain) +
+  ggtitle('rain')
 
 # Mean absolute change in number of bikes, depending on value of rain.
 group_by(bikes, rain) %>% summarise(mean(abs(d.num.bikes)))
@@ -375,7 +380,8 @@ ggplot(group_by(bikes, rain2) %>% mutate(recip.count=1/length(rain2)),
        aes(x=d.num.bikes, weight=recip.count)) + 
   geom_bar() +
   scale_x_discrete() +
-  facet_wrap(~rain2)
+  facet_wrap(~rain2) +
+  ggtitle('rain2')
 
 group_by(bikes, rain2) %>% summarise(mean(abs(d.num.bikes)))
 
@@ -389,7 +395,7 @@ Taking `rain` to be our measure, slightly over 70% of observations had no bikes 
 
 #### Foggy versus non-foggy days
 
-```{r fog.journeys.2v, warning=FALSE, cache=TRUE}
+```{r fog.journeys.2v, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(group_by(bikes, fog) %>% mutate(recip.count=1/length(fog)),
        aes(x=d.num.bikes, y=recip.count)) +
   geom_bar(stat='identity') +
@@ -401,7 +407,7 @@ group_by(bikes, fog) %>% summarise(mean(abs(d.num.bikes)))
 
 #### Journeys by temperature and wind:
 
-```{r temp.wind.journeys.2v, cache=TRUE}
+```{r temp.wind.journeys.2v, cache=TRUE, echo=FALSE}
 ggplot(bikes, aes(x=t, y=abs(d.num.bikes))) + 
   geom_jitter(alpha=0.05) + stat_smooth()
 cor.test(bikes$t, abs(bikes$d.num.bikes))
@@ -430,9 +436,9 @@ With the data in the current format, not all the questions we want to ask are ea
 
 To answer questions like that, we need to be somewhat forgiving with our definition of 'any given time'. Updates don't necessarily happen simultaneously, so we need to bin them together.
 
-I'm going to create bins ten minutes wide, and assign every observation to a bin. Then in each bin, we can ask how many bikes were at each station.
+I'm going to create bins ten minutes wide, and assign every observation to a bin. Then in each bin, we can ask how many bikes were at each station. Using this, we can check correlation between each station:
 
-```{r bin.time, cache=TRUE}
+```{r bin.time, cache=TRUE, echo=FALSE}
 # Round updated.time to the nearest ten minutes
 tmp <- as.numeric(bikes$updated.time) + 300
 bikes$updated.time.bin <- as.time(tmp - tmp%%600)
@@ -459,8 +465,6 @@ names(bikes.wide) <- c('date', 'time', 'sp', 'hh', 'bp', 'es')
 bikes.wide$total <- with(bikes.wide, sp + hh + bp + es)
 ```
 
-Using this, we can check correlation between each station:
-
 ```{r ggpairs, echo=FALSE, warning=FALSE, cache=TRUE}
 ggpairs(select(bikes.wide, sp:es),
         lower=list(params=c(alpha=0.05, position='jitter')))
@@ -468,19 +472,18 @@ ggpairs(select(bikes.wide, sp:es),
 
 Correlations range between 0.703 and 0.758, and the scatter plots and density histograms all look pretty similar. Does the correlation depend on time? Let's go for 0930, 1800, midnight, and noon.
 
-```{r ggpairs.times, warning=FALSE, cache=TRUE}
+```{r ggpairs.times, warning=FALSE, cache=TRUE, echo=FALSE}
 ggpairs(select(filter(bikes.wide, time == as.time('0930')), sp:es),
-        lower=list(params=c(alpha=0.05, position='jitter')))
+        lower=list(params=c(alpha=0.05, position='jitter')), title='0930')
 
 ggpairs(select(filter(bikes.wide, time == as.time('1800')), sp:es),
-        lower=list(params=c(alpha=0.05, position='jitter')))
+        lower=list(params=c(alpha=0.05, position='jitter')), title='1800')
 
 ggpairs(select(filter(bikes.wide, time == as.time('0000')), sp:es),
-        lower=list(params=c(alpha=0.05, position='jitter')))
+        lower=list(params=c(alpha=0.05, position='jitter')), title='midnight')
 
 ggpairs(select(filter(bikes.wide, time == as.time('1200')), sp:es),
-        lower=list(params=c(alpha=0.05, position='jitter')))
-
+        lower=list(params=c(alpha=0.05, position='jitter')), title='noon')
 ```
 
 The correlations are almost all lower. That surprised me, but I think it's an example of [Simpson's paradox](http://en.wikipedia.org/wiki/Simpson%27s_paradox). I note that the darkest points in the graph are at midnight, with no bikes in any station much of the time. Bikes are periodically moved in vans to account for anticipated demand; I assume that these stations are emptied most nights to prepare for people coming to work in the morning.
@@ -499,7 +502,7 @@ The troughs look a lot less significant now.
 
 We can view a histogram of the total number of bikes available at different times:
 
-```{r bikes.time.hists, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
+```{r bikes.time.hists, warning=FALSE, cache=TRUE, echo=FALSE, fig.width=11, fig.height=11}
 ggplot(bikes.wide, aes(x=total)) + 
   geom_histogram(binwidth=1) + 
   facet_wrap(~time)
@@ -509,7 +512,7 @@ We see heavy leftward skews overnight, with much flatter (but somewhat right-ske
 
 We can also check correlation between times more distant than a single tick. If I check the slots available when I leave the house, can I learn how many will be there when I arrive?
 
-```{r cor.0900.0930, warning=FALSE, cache=TRUE}
+```{r cor.0900.0930, warning=FALSE, cache=TRUE, echo=FALSE}
 # Take the number of spaces at 0900 and 0930 in each station on each day, in 
 # wide format (i.e. both in the same row). If there are multiple entries in a 
 # single bin, take the mean number of spaces.
@@ -528,7 +531,7 @@ with(spaces.0900.0930, cor.test(at.0900, at.0930))
 
 This is good correlation! Does it depend on the rain?
 
-```{r cor.0900.0930.rain, warning=FALSE, cache=TRUE}
+```{r cor.0900.0930.rain, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(spaces.0900.0930, aes(x=at.0900, y=at.0930, color=rain)) +
   geom_jitter() +
   stat_smooth()
@@ -541,13 +544,13 @@ Not much, if at all.
 
 We can construct a model
 
-```{r lm, cache=TRUE}
+```{r lm, cache=TRUE, echo=FALSE}
 summary(lm(at.0930 ~ at.0900, spaces.0900.0930))
 ```
 
 with an R^2 of 0.79, which is okay. But this isn't the best we can do, because it groups all stations together. Ideally we would create one model per station, with inputs from every station.
 
-```{r lm.many, cache=TRUE}
+```{r lm.many, cache=TRUE, echo=FALSE}
 # Construct a data frame with both long and wide properties. For every day for
 # every station, we indicate spaces in that station at 0930, and spaces in all
 # stations at 0900.
