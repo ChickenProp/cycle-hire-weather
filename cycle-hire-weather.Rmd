@@ -180,7 +180,7 @@ The two measures don't always agree. Sometimes `rain` is false but `precip.mm` i
 
 This table counts the anomalies by turning `precip.mm` into a boolean zero/nonzero (false/true) and comparing it to `rain`:
 
-```{r rain.precip.2v.table, cache=TRUE}
+```{r rain.precip.2v.table, echo=FALSE, cache=TRUE}
 table(weather$rain, weather$precip.mm != 0)
 ```
 
@@ -216,7 +216,7 @@ ggplot(bikes.all, aes(x=d.updated, y=..count..+1)) +
 
 There are a few outliers here. Not all the lines are visible due to rendering artifacts, but above 5000, we only have five entries:
 
-```{r dt.1v.right, cache=TRUE}
+```{r dt.1v.right, echo=FALSE, cache=TRUE}
 bikes.all[bikes.all$d.updated >= 5000, c('name', 'prev.updated', 'updated')]
 ```
 
@@ -224,25 +224,30 @@ The first four of these happened when my collection script broke and I failed to
 
 Let's zoom in on the lower ones:
 
-```{r dt.1v.left, cache=TRUE}
+```{r dt.1v.left, echo=FALSE, cache=TRUE}
 ggplot(bikes.all[bikes.all$d.updated < 5000,], 
        aes(x=d.updated, y=..count..+1)) +
   geom_histogram(binwidth=5) +
   scale_y_log10()
+```
 
-# The times of entries with between 2000 and 5000 minutes between updates.
+There are several instances where the time between updates is unusually large, on the order of hours or days. The times of entries with between 2000 and 5000 minutes between updates:
+
+```{r dt.1v.2000.5000, echo=FALSE, cache=TRUE}
 bikes.all[bikes.all$d.updated >= 2000 & bikes.all$d.updated < 5000,
           c('name', 'prev.updated', 'updated')]
+```
 
-# Now entries with less than 60 minutes between updates, no longer on a 
-# log scale.
+It looks like these happened to all stations simultaneously, suggesting problems with either my collection script or the API, rather than problems with individual locations.
+
+Entries with less than 60 minutes between updates, no longer on a log scale:
+
+```{r dt.1v.60, echo=FALSE, cache=TRUE}
 ggplot(bikes.all[bikes.all$d.updated < 60,], aes(x=d.updated)) + 
   geom_histogram(binwidth=1)
 ```
 
-Then there are a several instances where the time between updates is unusually large, on the order of hours or days. It looks like these happened to all stations simultaneously, suggesting problems with either my collection script or the API, rather than problems with individual locations.
-
-But in the vast majority of cases, updates are approximately ten minutes apart. This encourages me to take a subset of the data (`bikes.all` -> `bikes`), considering only entries with `d.updated` less than 15 minutes. This eliminates many outliers in future graphs.
+In the vast majority of cases, updates are approximately ten minutes apart. This encourages me to take a subset of the data (`bikes.all` -> `bikes`), considering only entries with `d.updated` less than 15 minutes. This eliminates many outliers in future graphs.
 
 #### Date and time of update
 
@@ -270,7 +275,7 @@ It was common for every station to report less than a full complement of docks. 
 
 #### Journeys taken throughout the year
 
-```{r date.journeys.2v, cache=TRUE}
+```{r date.journeys.2v, echo=FALSE, cache=TRUE}
 ggplot(bikes, aes(x=updated, y=abs(d.num.bikes))) + 
   geom_jitter(alpha=0.05) + stat_smooth()
 ```
