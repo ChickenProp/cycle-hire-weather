@@ -17,6 +17,10 @@ I collected the cycle hire data myself, over the course of the year, by download
 
 All data and source code used for this project can be found in the [git repository](https://github.com/ChickenProp/cycle-hire-weather).
 
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=11)
+```
+
 ```{r load.libs, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
 library(ggplot2)
 library(reshape2)
@@ -319,7 +323,8 @@ There's very strong correlation between the number of bikes in adjacent entries.
 ```{r bikes.time.name.mv, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(bikes, aes(x=updated.time, y=num.bikes, color=name)) + 
   geom_jitter(alpha=0.05, shape=1) +
-  stat_smooth()
+  stat_smooth() +
+  scale_x_datetime(labels=date_format('%H:%M'))
 ```
 
 The correlation also looks strong between the number of bikes at each station at any given time. Since they're all close to each other, that's not surprising. The time is a big factor, with large numbers of bikes in the stations during office hours, and few numbers in the evening and early morning. There's a slight dip around 1pm, which could be related to people using them on their lunch breaks.
@@ -372,7 +377,7 @@ Here, `rain` is the original variable in the dataset, and `rain2` simply measure
 ggplot(group_by(bikes, rain) %>% mutate(recip.count=1/length(rain)),
        aes(x=d.num.bikes, weight=recip.count)) + 
   geom_bar() +
-  scale_x_discrete() +
+  scale_x_discrete(limits=seq(-14, 14, 2)) +
   facet_wrap(~rain) +
   ggtitle('rain')
 
@@ -384,7 +389,7 @@ bikes$rain2 <- bikes$precip.mm != 0
 ggplot(group_by(bikes, rain2) %>% mutate(recip.count=1/length(rain2)),
        aes(x=d.num.bikes, weight=recip.count)) + 
   geom_bar() +
-  scale_x_discrete() +
+  scale_x_discrete(limits=seq(-14, 14, 2)) +
   facet_wrap(~rain2) +
   ggtitle('rain2')
 
@@ -404,7 +409,7 @@ Taking `rain` to be our measure, slightly over 70% of observations had no bikes 
 ggplot(group_by(bikes, fog) %>% mutate(recip.count=1/length(fog)),
        aes(x=d.num.bikes, y=recip.count)) +
   geom_bar(stat='identity') +
-  scale_x_discrete() +
+  scale_x_discrete(limits=seq(-14, 14, 2)) +
   facet_wrap(~fog)
 
 group_by(bikes, fog) %>% summarise(mean(abs(d.num.bikes)))
@@ -429,7 +434,8 @@ Unlike rain, it seems that fog, wind and temperature make approximately no diffe
 ```{r bikes.time.rain.mv, warning=FALSE, cache=TRUE, echo=FALSE}
 ggplot(bikes, aes(x=updated.time, y=num.bikes, color=rain)) +
   geom_jitter(alpha=0.05, shape=1) +
-  stat_smooth()
+  stat_smooth() +
+  scale_x_datetime(labels=date_format('%H:%M'))
 ```
 
 Rain reduces the variance, with fewer bikes during office hours and more outside of them.
@@ -508,9 +514,10 @@ The troughs look a lot less significant now.
 We can view a histogram of the total number of bikes available at different times:
 
 ```{r bikes.time.hists, warning=FALSE, cache=TRUE, echo=FALSE, fig.width=11, fig.height=11}
-ggplot(bikes.wide, aes(x=total)) + 
+ggplot(mutate(bikes.wide, timestr=strftime(time, '%H:%M', tz='GMT')),
+       aes(x=total)) + 
   geom_histogram(binwidth=1) + 
-  facet_wrap(~time)
+  facet_wrap(~timestr)
 ```
 
 We see heavy leftward skews overnight, with much flatter (but somewhat right-skewed) distributions during office hours, and gradual transitions between the two.
