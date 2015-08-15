@@ -595,7 +595,17 @@ Final plots and summary
 ### Plot 1
 
 ```{r final.plot.1, echo=FALSE, warning=FALSE, cache=TRUE, fig.width=11, fig.height=11}
-ggplot(mutate(bikes.wide, timestr=strftime(time, '%H:%M', tz='GMT')),
+# Round updated.time to the nearest 30 minutes
+tmp <- as.numeric(bikes$updated.time) + 900
+bikes$updated.time.bin.30 <- as.time(tmp - tmp%%1800)
+rm(tmp)
+
+bikes.wide.30 <- dcast(bikes, updated.date + updated.time.bin.30 ~ name,
+                       value.var='num.bikes', fun.aggregate=mean)
+names(bikes.wide.30) <- c('date', 'time', 'sp', 'hh', 'bp', 'es')
+bikes.wide.30$total <- with(bikes.wide.30, sp + hh + bp + es)
+
+ggplot(mutate(bikes.wide.30, timestr=strftime(time, '%H:%M', tz='GMT')),
        aes(x=total)) + 
   geom_histogram(binwidth=1) + 
   facet_wrap(~timestr) +
@@ -604,7 +614,7 @@ ggplot(mutate(bikes.wide, timestr=strftime(time, '%H:%M', tz='GMT')),
   ggtitle('Number of bikes available throughout the day')
 ```
 
-The total number of bikes available changes gradually throughout the day, with few bikes typically available at night, but often many available during the daytime. The distribution looks left-skewed from around 10:00 to 16:30, and right-skewed from around 19:00 to 07:30. The left skew is never as extreme as the right skew, but because the stations have different numbers of slots, that doesn't tell us much.
+The total number of bikes available changes gradually throughout the day, with few bikes typically available at night, but often many available during the daytime. The distribution looks left-skewed from around 10:00 to 17:00, and right-skewed from around 19:00 to 07:30. The left skew is never as extreme as the right skew, but because the stations have different numbers of slots, that doesn't tell us much.
 
 ### Plot 2
 
