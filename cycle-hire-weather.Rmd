@@ -210,7 +210,7 @@ Exploring the bike data
 
 #### Time between updates
 
-```{r dt.1v, cache=TRUE}
+```{r dt.1v, echo=FALSE, cache=TRUE}
 # Histogram of d.updated, on a log-y scale. The ..count..+1 avoids ugly blocks
 # hanging down where there are no entries in a bin.
 ggplot(bikes.all, aes(x=d.updated, y=..count..+1)) + 
